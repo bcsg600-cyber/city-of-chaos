@@ -631,6 +631,23 @@ paperCarLoader.load('./papercar.glb', gltf => {
     if (o.isMesh) {
       o.castShadow = true;
       o.receiveShadow = true;
+
+      // Improve the lighting on the existing model without changing its shape.
+      if (o.geometry && o.geometry.index) {
+        o.geometry = o.geometry.clone();
+        o.geometry.computeVertexNormals();
+      }
+
+      // Use smooth material shading and preserve the model's original textures/colors.
+      const polishMaterial = material => {
+        const m = material.clone();
+        m.flatShading = false;
+        m.needsUpdate = true;
+        return m;
+      };
+      o.material = Array.isArray(o.material)
+        ? o.material.map(polishMaterial)
+        : polishMaterial(o.material);
     }
   });
   const bounds = new THREE.Box3().setFromObject(paperModel);
