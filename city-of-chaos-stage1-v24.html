@@ -827,13 +827,39 @@ scene.add(avatar);
 
 // Load the rigged player model and retarget compatible Mixamo clips.
 // The procedural character remains as a fallback if any asset fails to load.
-const playerAnimation = { mixer: null, actions: {}, current: null, ready: false };
+const playerAnimation = { mixer: null, actions: {}, current: null, ready: false, transitioning: false };
 function setPlayerAnimation(name, force = false) {
   const next = playerAnimation.actions[name];
   if (!next || (next === playerAnimation.current && !force)) return;
   next.reset().fadeIn(0.18).play();
   if (playerAnimation.current) playerAnimation.current.fadeOut(0.18);
   playerAnimation.current = next;
+}
+
+function playPlayerAnimationOnce(name, onComplete) {
+  const action = playerAnimation.actions[name];
+  if (!playerAnimation.mixer || !action) return false;
+  if (playerAnimation.transitioning) return true;
+
+  playerAnimation.transitioning = true;
+  if (playerAnimation.current && playerAnimation.current !== action) {
+    playerAnimation.current.fadeOut(0.12);
+  }
+  action.reset();
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.fadeIn(0.12).play();
+  playerAnimation.current = action;
+
+  const onFinished = event => {
+    if (event.action !== action) return;
+    playerAnimation.mixer.removeEventListener('finished', onFinished);
+    action.clampWhenFinished = false;
+    playerAnimation.transitioning = false;
+    if (onComplete) onComplete();
+  };
+  playerAnimation.mixer.addEventListener('finished', onFinished);
+  return true;
 }
 function normalizeBoneName(name) {
   return name.replace(/_\d+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
@@ -1261,25 +1287,34 @@ function leaveStolen() {
 }
 
 function toggleCar() {
+  if (playerAnimation.transitioning) return;
+
   if (!inCar) {
     if (distToCar() < ENTER_DIST && Math.abs(car.speed) < 2) {
-      // Get into the red car
-      activeVeh = redVeh;
-      car.x = redRec.x;
-      car.z = redRec.z;
-      car.h = redRec.h;
-      car.speed = 0;
-      inCar = true;
-      avatar.visible = false;
+      const enterRedCar = () => {
+        activeVeh = redVeh;
+        car.x = redRec.x;
+        car.z = redRec.z;
+        car.h = redRec.h;
+        car.speed = 0;
+        inCar = true;
+        avatar.visible = false;
+      };
+      if (!playPlayerAnimationOnce('enterCar', enterRedCar)) enterRedCar();
       return;
     }
+
     const rec = nearestParked();
-    if (rec) stealCar(rec);
+    if (rec) {
+      const enterParkedCar = () => stealCar(rec);
+      if (!playPlayerAnimationOnce('enterCar', enterParkedCar)) enterParkedCar();
+    }
     return;
   }
+
   if (Math.abs(car.speed) >= 2) return;
 
-  // Get out
+  // Leave the vehicle first, then play the exit animation before restoring movement.
   if (activeVeh === redVeh) {
     redRec.x = car.x;
     redRec.z = car.z;
@@ -1295,6 +1330,11 @@ function toggleCar() {
   vy = 0;
   onGround = true;
   jumpState = 'ground';
+  avatar.position.copy(pos);
+
+  if (!playPlayerAnimationOnce('exitCar', () => setPlayerAnimation('idle', true))) {
+    setPlayerAnimation('idle', true);
+  }
 }
 
 // ---------- Update: on foot ----------
@@ -1307,6 +1347,10 @@ const camTarget = new THREE.Vector3();
 const camOffset = new THREE.Vector3();
 
 function updateOnFoot(dt) {
+  if (playerAnimation.transitioning) {
+    avatar.position.copy(pos);
+    return;
+  }
   const fixPlayer = freeSpot(pos.x, pos.z, RADIUS);
   if (fixPlayer) { pos.x = fixPlayer.x; pos.z = fixPlayer.z; }
   fwd.set(-Math.sin(camYaw), 0, -Math.cos(camYaw));
