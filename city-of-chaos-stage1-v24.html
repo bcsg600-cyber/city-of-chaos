@@ -930,7 +930,8 @@ async function loadRiggedPlayer() {
       ['idle', 'Idle.fbx'],
       ['walk', 'Walking Left Turn.fbx'],
       ['run', 'Running.fbx'],
-      ['jump', 'Backward Jump.fbx'],
+      ['jump', 'Jump.fbx'],
+      ['backJump', 'Backward Jump.fbx'],
       ['sit', 'Sitting.fbx'],
       ['enterCar', 'Entering Car.fbx'],
       ['exitCar', 'Exiting Car.fbx']
@@ -952,9 +953,13 @@ async function loadRiggedPlayer() {
           const targetBoneName = targetBones.get(boneKey);
           if (!targetBoneName) return null;
 
-          // Keep locomotion under game control rather than allowing FBX root motion
-          // to move the character independently of collision and player position.
-          if (boneKey === normalizeBoneName('mixamorig:Hips') && track.name.endsWith('.position')) return null;
+          // Game movement controls root motion for locomotion and jumping, so these
+          // clips must not move the skeleton root independently of collision/physics.
+          // Keep root translation for sitting and car transitions so those poses land correctly.
+          const gameControlledRootMotion = ['walk', 'run', 'jump', 'backJump'].includes(actionName);
+          if (gameControlledRootMotion &&
+              boneKey === normalizeBoneName('mixamorig:Hips') &&
+              track.name.endsWith('.position')) return null;
 
           const mapped = track.clone();
           mapped.name = targetBoneName + track.name.slice(dot);
@@ -962,11 +967,11 @@ async function loadRiggedPlayer() {
           return mapped;
         }).filter(Boolean);
 
-        if (matchedTracks > 0) {
+        if (matchedTracks >= 10) {
           const clip = new THREE.AnimationClip(actionName, sourceClip.duration, tracks);
           playerAnimation.actions[actionName] = playerAnimation.mixer.clipAction(clip);
         } else {
-          console.warn('No matching bones found for animation:', fileName);
+          console.warn('Animation skipped because too few tracks matched:', fileName, matchedTracks);
         }
       } catch (clipError) {
         console.warn('Could not load player animation:', fileName, clipError);
@@ -975,7 +980,7 @@ async function loadRiggedPlayer() {
 
     playerAnimation.ready = true;
     setPlayerAnimation('idle', true);
-    console.info('Rigged player loaded. Available animations:', Object.keys(playerAnimation.actions));
+    console.info('Rigged player loaded. Available animations:', Object.keys(playerAnimation.actions), 'target bones:', targetBones.size);
   } catch (error) {
     console.warn('Rigged player could not be loaded; keeping the original character.', error);
   } finally {
