@@ -718,7 +718,7 @@ const HG = {
   palm: new THREE.SphereGeometry(0.045, 12, 10).scale(0.85, 1.25, 0.5).translate(0, -0.08, 0),
   finger: capsuleGeo(0.011, 0.05, -0.03),
   thumb: capsuleGeo(0.012, 0.04, -0.02),
-  neck: new THREE.CylinderGeometry(0.05, 0.058, 0.12, 12),
+  neck: new THREE.CylinderGeometry(0.05, 0.058, 0.12, 12).translate(0, 1.6, 0),
   head: new THREE.SphereGeometry(0.112, 24, 18).scale(0.9, 1.13, 0.97),
   jaw: new THREE.SphereGeometry(0.1, 16, 12).scale(0.9, 0.7, 0.85).translate(0, -0.06, 0.02),
   cheek: new THREE.SphereGeometry(0.035, 10, 8),
@@ -771,7 +771,7 @@ function buildHuman(outfit) {
   add(HG.pelvis, bottom, 0, -0.1, 0, rig.torso);
   add(new THREE.CylinderGeometry(0.165, 0.165, 0.05, 16, 1, true), mat(0x111111, 0.5), 0, -0.12, 0, rig.torso).scale.set(1.2, 1, 0.82);
   add(new THREE.BoxGeometry(0.03, 0.36, 0.01), mat(0xf2f4f7, 0.6), 0, 0.0, 0.135, rig.torso);
-  add(HG.neck, skin, 0, 0.38, 0, rig.torso);
+  add(HG.neck, skin, 0, 0.42, 0, rig.torso);
 
   // Head with face details
   const headPivot = new THREE.Group();
