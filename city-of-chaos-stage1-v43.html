@@ -720,7 +720,8 @@ const redDoorMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.8, 1.7), mat(0x
 redDoorMesh.position.set(0, 0, -0.85);
 redDoorMesh.castShadow = true;
 redDoor.add(redDoorMesh);
-redDoor.visible = false;\nplayerCar.add(redDoor);
+redDoor.visible = false;
+playerCar.add(redDoor);
 const redVeh = { group: playerCar, spinners: wheelSpinners, pivots: frontPivots, tail: pcTailMat, door: redDoor, rec: null };
 let activeVeh = redVeh;
 
