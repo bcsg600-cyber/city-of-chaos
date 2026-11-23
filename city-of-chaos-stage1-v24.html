@@ -828,17 +828,18 @@ scene.add(avatar);
 // Load the rigged player model and retarget compatible Mixamo clips.
 // The procedural character remains as a fallback if any asset fails to load.
 const playerAnimation = { mixer: null, actions: {}, current: null, ready: false };
-function setPlayerAnimation(name) {
+function setPlayerAnimation(name, force = false) {
   const next = playerAnimation.actions[name];
-  if (!next || next === playerAnimation.current) return;
+  if (!next || (next === playerAnimation.current && !force)) return;
   next.reset().fadeIn(0.18).play();
   if (playerAnimation.current) playerAnimation.current.fadeOut(0.18);
   playerAnimation.current = next;
 }
 function normalizeBoneName(name) {
-  return name.replace(/_\\d+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return name.replace(/_\d+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
 }
 async function loadRiggedPlayer() {
+  const blobUrls = [];
   try {
     const zipUrl = 'https://raw.githubusercontent.com/bcsg600-cyber/city-of-chaos/main/business_man%202.zip';
     const zipResponse = await fetch(zipUrl);
@@ -846,14 +847,13 @@ async function loadRiggedPlayer() {
     const zip = await window.JSZip.loadAsync(await zipResponse.arrayBuffer());
     const gltfJson = JSON.parse(await zip.file('scene.gltf').async('string'));
 
-    // Turn the archive's model data and textures into browser-loadable blob URLs.
-    const blobUrls = [];
+    // Make the archive's model data and textures available to GLTFLoader.
     for (const asset of [...(gltfJson.buffers || []), ...(gltfJson.images || [])]) {
       if (!asset.uri) continue;
       const entry = zip.file(asset.uri);
       if (!entry) throw new Error('Missing character asset: ' + asset.uri);
       const bytes = await entry.async('arraybuffer');
-      const isImage = /\\.(jpe?g|png|webp)$/i.test(asset.uri);
+      const isImage = /\.(jpe?g|png|webp)$/i.test(asset.uri);
       const mime = isImage ? (asset.uri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg') : 'application/octet-stream';
       const blobUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
       blobUrls.push(blobUrl);
@@ -862,14 +862,21 @@ async function loadRiggedPlayer() {
 
     const gltf = await new GLTFLoader().parseAsync(JSON.stringify(gltfJson), '');
     const model = gltf.scene;
-    model.scale.setScalar(100);
+    model.scale.setScalar(125);
     model.updateMatrixWorld(true);
+
+    let hasSkinnedMesh = false;
+    model.traverse(object => {
+      if (object.isSkinnedMesh) {
+        hasSkinnedMesh = true;
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    if (!hasSkinnedMesh) throw new Error('The character model does not contain a skinned mesh');
+
     const bounds = new THREE.Box3().setFromObject(model);
     model.position.y -= bounds.min.y;
-
-    // Keep the existing avatar wrapper so movement, camera, and car code stay intact.
-    for (const child of [...avatar.children]) child.visible = false;
-    avatar.add(model);
 
     const targetBones = new Map();
     model.traverse(object => {
@@ -878,39 +885,62 @@ async function loadRiggedPlayer() {
         if (!targetBones.has(key)) targetBones.set(key, object.name);
       }
     });
+    if (targetBones.size < 20) throw new Error('The character skeleton could not be read');
+
+    // Keep the existing avatar wrapper so movement, camera, and car code remain unchanged.
+    avatar.add(model);
+    for (const child of [...avatar.children]) {
+      if (child !== model) child.visible = false;
+    }
 
     playerAnimation.mixer = new THREE.AnimationMixer(model);
     if (gltf.animations && gltf.animations[0]) {
       playerAnimation.actions.idle = playerAnimation.mixer.clipAction(gltf.animations[0]);
+      setPlayerAnimation('idle', true);
     }
 
     const fbxLoader = new FBXLoader();
     const clips = [
+      ['idle', 'Idle.fbx'],
       ['walk', 'Walking Left Turn.fbx'],
       ['run', 'Running.fbx'],
-      ['jump', 'Jump.fbx']
+      ['jump', 'Backward Jump.fbx'],
+      ['sit', 'Sitting.fbx'],
+      ['enterCar', 'Entering Car.fbx'],
+      ['exitCar', 'Exiting Car.fbx']
     ];
+
     await Promise.all(clips.map(async ([actionName, fileName]) => {
       try {
         const url = 'https://raw.githubusercontent.com/bcsg600-cyber/city-of-chaos/main/' + encodeURIComponent(fileName);
         const source = await fbxLoader.loadAsync(url);
         const sourceClip = source.animations && source.animations[0];
         if (!sourceClip) return;
+
         let matchedTracks = 0;
         const tracks = sourceClip.tracks.map(track => {
           const dot = track.name.lastIndexOf('.');
-          if (dot < 1) return track.clone();
+          if (dot < 1) return null;
           const sourceBoneName = track.name.slice(0, dot);
-          const targetBoneName = targetBones.get(normalizeBoneName(sourceBoneName));
-          if (!targetBoneName) return track.clone();
+          const boneKey = normalizeBoneName(sourceBoneName);
+          const targetBoneName = targetBones.get(boneKey);
+          if (!targetBoneName) return null;
+
+          // Keep locomotion under game control rather than allowing FBX root motion
+          // to move the character independently of collision and player position.
+          if (boneKey === normalizeBoneName('mixamorig:Hips') && track.name.endsWith('.position')) return null;
+
           const mapped = track.clone();
           mapped.name = targetBoneName + track.name.slice(dot);
           matchedTracks++;
           return mapped;
-        });
+        }).filter(Boolean);
+
         if (matchedTracks > 0) {
           const clip = new THREE.AnimationClip(actionName, sourceClip.duration, tracks);
           playerAnimation.actions[actionName] = playerAnimation.mixer.clipAction(clip);
+        } else {
+          console.warn('No matching bones found for animation:', fileName);
         }
       } catch (clipError) {
         console.warn('Could not load player animation:', fileName, clipError);
@@ -918,10 +948,12 @@ async function loadRiggedPlayer() {
     }));
 
     playerAnimation.ready = true;
-    setPlayerAnimation('idle');
+    setPlayerAnimation('idle', true);
     console.info('Rigged player loaded. Available animations:', Object.keys(playerAnimation.actions));
   } catch (error) {
     console.warn('Rigged player could not be loaded; keeping the original character.', error);
+  } finally {
+    // Blob URLs are retained while the model is alive because its textures use them.
   }
 }
 loadRiggedPlayer();
