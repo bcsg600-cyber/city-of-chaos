@@ -491,17 +491,33 @@ function addInterior(group, yBase) {
 let sharedSUVTemplate = null;
 let sharedSUVLoading = false;
 const sharedSUVWaiters = [];
+function discardInvisibleNpcVehicle(group) {
+  if (!group || group.name === 'player-shared-papercar-suv') return;
+  scene.remove(group);
+  const parkedIndex = parkedRecs.findIndex(rec => rec.group === group);
+  if (parkedIndex >= 0) {
+    const rec = parkedRecs[parkedIndex];
+    const colliderIndex = colliders.indexOf(rec.collider);
+    if (colliderIndex >= 0) colliders.splice(colliderIndex, 1);
+    parkedRecs.splice(parkedIndex, 1);
+  }
+  for (let i = traffic.length - 1; i >= 0; i--) {
+    if (traffic[i].group === group) traffic.splice(i, 1);
+  }
+}
 function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
   const attach = template => {
     const model = template.clone(true);
     model.name = 'shared-papercar-suv';
     const wheelNodes = [];
     let importedDoor = null;
+    let renderableMeshCount = 0;
     model.traverse(o => {
       // Some GLB exports hide complete subtrees with visibility flags on parent
       // groups. Make every node visible, not just the mesh children.
       o.visible = true;
       if (o.isMesh) {
+        if (o.geometry?.attributes?.position?.count >= 3) renderableMeshCount++;
         // Share source geometry/materials across all vehicles for performance.
         o.castShadow = false;
         o.receiveShadow = false;
@@ -516,6 +532,11 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
           // Some exported vehicle materials arrive hidden; restore them while
           // keeping their original opacity, maps, and surface properties.
           material.visible = true;
+          // Recover fully transparent exports that otherwise make cars vanish.
+          if (material.opacity !== undefined && material.opacity <= 0.01) {
+            material.opacity = 1;
+            material.transparent = false;
+          }
           material.side = THREE.DoubleSide;
           material.needsUpdate = true;
           return material;
@@ -539,6 +560,14 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
     model.scale.setScalar(scale);
     model.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
     model.updateMatrixWorld(true);
+    const modelBounds = new THREE.Box3().setFromObject(model);
+    const modelSize = new THREE.Vector3();
+    modelBounds.getSize(modelSize);
+    if (renderableMeshCount === 0 || modelSize.x < 0.05 || modelSize.y < 0.05 || modelSize.z < 0.05) {
+      console.warn('Removing invisible NPC vehicle:', group.name);
+      discardInvisibleNpcVehicle(group);
+      return;
+    }
     group.add(model);
     for (const wheel of wheelNodes) wheelTargets.push(wheel);
     if (doorTarget && importedDoor) doorTarget.userData.importedDoor = importedDoor;
