@@ -973,8 +973,6 @@ let playerModel = null;
 let playerModelMixer = null;
 let playerAnimationActions = {};
 let desiredPlayerAnimation = 'idle';
-let playerBoneRig = null;
-let playerAnimationClock = 0;
 let activePlayerAction = null;
 const characterLoader = new GLTFLoader();
 characterLoader.load('./indian_man_in_suit.glb', gltf => {
@@ -1037,12 +1035,14 @@ function playPlayerAnimation(kind) {
   action.setEffectiveTimeScale(kind === 'walk' ? 0.62 : 1);
   action.setLoop(kind === 'jump' ? THREE.LoopOnce : THREE.LoopRepeat, kind === 'jump' ? 1 : Infinity);
   action.clampWhenFinished = kind === 'jump';
-  if (activePlayerAction === action) return;
+  // A one-shot jump action remains the active action after it reaches its
+  // final frame. Restart it when the player jumps again instead of returning.
+  if (activePlayerAction === action && (kind !== 'jump' || action.isRunning())) return;
   action.reset();
   action.enabled = true;
   action.setEffectiveWeight(1);
   action.fadeIn(0.18);
-  if (activePlayerAction) activePlayerAction.fadeOut(0.18);
+  if (activePlayerAction && activePlayerAction !== action) activePlayerAction.fadeOut(0.18);
   action.play();
   activePlayerAction = action;
 }
