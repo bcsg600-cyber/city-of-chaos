@@ -628,17 +628,6 @@ const frontPivots = [];
 addSharedSUV(playerCar, wheelSpinners);
 scene.add(playerCar);
 
-// Big floating arrow marking the usable car (hidden while you're inside)
-const carArrow = new THREE.Group();
-const arrowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 0.9 });
-const arrowHead = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.2, 20).rotateX(Math.PI), arrowMat);
-arrowHead.position.y = 0;
-const arrowShaft = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.8, 0.55), arrowMat);
-arrowShaft.position.y = 1.9;
-carArrow.add(arrowHead, arrowShaft);
-carArrow.position.set(0, 4.5, 0);
-playerCar.add(carArrow);
-
 // Headlight beam, bright at night
 const headSpot = new THREE.SpotLight(0xfff1c8, 0, 60, Math.PI / 5, 0.4, 1);
 headSpot.position.set(0, 1.0, 2.3);
@@ -1567,22 +1556,24 @@ function knockDownStreetLamp(x, z, h) {
   for (const lamp of destructibleStreetLamps) {
     if (lamp.falling) continue;
     let hit = false;
-    for (const f of [-2.0, 0, 2.0]) {
-      for (const side of [-0.9, 0.9]) {
+    // Test the entire vehicle footprint with a generous contact margin.
+    for (const f of [-2.3, -1.0, 0, 1.0, 2.3]) {
+      for (const side of [-1.05, 0, 1.05]) {
         const px = x + fx * f + rx * side;
         const pz = z + fz * f + rz * side;
-        if (px + 0.15 > lamp.collider.minX && px - 0.15 < lamp.collider.maxX &&
-            pz + 0.15 > lamp.collider.minZ && pz - 0.15 < lamp.collider.maxZ) hit = true;
+        if (Math.hypot(px - lamp.x, pz - lamp.z) < 0.95) hit = true;
       }
     }
+    // Also catch a low-speed side scrape against the pole.
+    if (!hit && Math.hypot(x - lamp.x, z - lamp.z) < 2.0) hit = true;
     if (!hit) continue;
     lamp.falling = true;
     lamp.t = 0;
-    lamp.leanX = lamp.x - x;
-    lamp.leanZ = lamp.z - z;
-    const length = Math.hypot(lamp.leanX, lamp.leanZ) || 1;
-    lamp.leanX /= length;
-    lamp.leanZ /= length;
+    const awayX = lamp.x - x;
+    const awayZ = lamp.z - z;
+    const length = Math.hypot(awayX, awayZ) || 1;
+    lamp.leanX = awayX / length;
+    lamp.leanZ = awayZ / length;
     const colliderIndex = colliders.indexOf(lamp.collider);
     if (colliderIndex >= 0) colliders.splice(colliderIndex, 1);
     fallenStreetLamps.push(lamp);
@@ -1595,9 +1586,8 @@ function updateFallenStreetLamps(dt) {
     lamp.t += dt;
     const fall = Math.min(1, lamp.t / 0.75);
     const easedFall = fall * fall * (3 - 2 * fall);
-    const angle = 1.48 * easedFall;
-    lamp.group.rotation.x = -lamp.leanZ * angle;
-    lamp.group.rotation.z = lamp.leanX * angle;
+    const angle = 1.52 * easedFall;
+    lamp.group.rotation.set(-lamp.leanZ * angle, 0, lamp.leanX * angle);
     if (lamp.t > 1.8) {
       const opacity = Math.max(0, 1 - (lamp.t - 1.8) / 0.9);
       for (const child of lamp.group.children) child.material.opacity = opacity;
@@ -2036,6 +2026,8 @@ function updateOnFoot(dt) {
 
 // ---------- Update: driving ----------
 function updateCar(dt) {
+  // Resolve a pole already touching the vehicle before carFreeSpot can push it away.
+  knockDownStreetLamp(car.x, car.z, car.h);
   const fixCar = carFreeSpot();
   if (fixCar) { car.x = fixCar.x; car.z = fixCar.z; car.speed = 0; }
   // Driving uses its own touch buttons; the walking joystick never doubles as gas.
@@ -2139,10 +2131,6 @@ function updateEnvironment(dt) {
   for (const l of streetLights) l.intensity = night * 60;
   neonMats.forEach((m, i) => { m.emissiveIntensity = night * (2.5 + Math.sin(elapsed * 7 + i) * 0.3); });
   cloudMat.color.setScalar(0.35 + 0.65 * daylight);
-  carArrow.rotation.y = elapsed * 2;
-  carArrow.position.y = 4.5 + Math.sin(elapsed * 3) * 0.3;
-  carArrow.visible = !inCar;
-
   const nsGreen = (elapsed % 12) < 5.5;
   for (const t of trafficLights) {
     t.mesh.material = (t.axis === 'ns' ? nsGreen : !nsGreen) ? greenLight : redLight;
