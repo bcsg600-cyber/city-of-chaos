@@ -1099,7 +1099,7 @@ function playPlayerAnimation(kind) {
   if (!playerModelMixer) return;
   // There is no punch/enter/exit clip in the supplied animation files. Do not
   // accidentally play the running cycle for those states.
-  if (kind === 'idle' || kind === 'enter' || kind === 'exit' || kind === 'sit' || kind === 'punch') {
+  if (kind === 'idle' || kind === 'enter' || kind === 'exit' || kind === 'sit' || kind === 'punch' || kind === 'land') {
     if (activePlayerAction) {
       activePlayerAction.fadeOut(0.18);
       activePlayerAction = null;
@@ -1908,8 +1908,8 @@ function updateCar(dt) {
 
 // ---------- Environment ----------
 function updateEnvironment(dt) {
-  // One full in-game day now lasts 10 real minutes instead of about 2.
-  timeOfDay = (timeOfDay + dt * 0.04) % 24;
+  // One full in-game day now lasts 20 real minutes: roughly 10 minutes of daylight and 10 minutes of night.
+  timeOfDay = (timeOfDay + dt * 0.02) % 24;
   const a = (timeOfDay / 24) * Math.PI * 2 - Math.PI / 2;
   const elevation = Math.sin(a);
   sunDir.set(Math.cos(a), elevation, 0.4).normalize();
@@ -2486,7 +2486,6 @@ function loop(timestamp = 0) {
   else if (gameStarted && inCar) updateCar(dt);
   else if (gameStarted) updateOnFoot(dt);
   if (gameStarted && playerModelMixer) {
-    bindPendingPlayerClips();
     playerModelMixer.update(dt);
   }
   if (gameStarted) {
