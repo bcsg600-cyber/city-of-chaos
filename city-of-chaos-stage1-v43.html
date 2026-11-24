@@ -387,101 +387,64 @@ function addInterior(group, yBase) {
   group.add(dash, wheel);
 }
 
+// One shared SUV asset is used by every vehicle in the city.
+let sharedSUVTemplate = null;
+let sharedSUVLoading = false;
+const sharedSUVWaiters = [];
+function addSharedSUV(group) {
+  const attach = template => {
+    const model = template.clone(true);
+    model.name = 'shared-papercar-suv';
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true;
+      o.receiveShadow = true;
+      // Prevent one-sided surfaces and stale bounds from making parts disappear.
+      o.frustumCulled = false;
+      const polish = material => {
+        const copy = material.clone();
+        copy.side = THREE.DoubleSide;
+        copy.needsUpdate = true;
+        return copy;
+      };
+      o.material = Array.isArray(o.material) ? o.material.map(polish) : polish(o.material);
+    });
+    const bounds = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    bounds.getSize(size);
+    bounds.getCenter(center);
+    const longestHorizontal = Math.max(size.x, size.z, 0.001);
+    const scale = 4.3 / longestHorizontal;
+    model.scale.setScalar(scale);
+    model.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
+    group.add(model);
+  };
+  if (sharedSUVTemplate) {
+    attach(sharedSUVTemplate);
+    return;
+  }
+  sharedSUVWaiters.push(attach);
+  if (sharedSUVLoading) return;
+  sharedSUVLoading = true;
+  new GLTFLoader().load('./papercar.glb', gltf => {
+    sharedSUVTemplate = gltf.scene;
+    for (const waiter of sharedSUVWaiters.splice(0)) waiter(sharedSUVTemplate);
+  }, undefined, error => {
+    console.error('Could not load shared papercar.glb:', error);
+    sharedSUVLoading = false;
+  });
+}
+
 function buildCar() {
   const g = new THREE.Group();
-  const paint = pick(carBodyMats);
-  const body = new THREE.Mesh(carBodyGeo, paint);
-  body.castShadow = true;
-  g.add(body);
-
-  // Sculpted hood, trunk and roof give the car a recognizable sedan silhouette.
-  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.13, 1.25), paint);
-  hood.position.set(0, 1.08, 1.35);
-  const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.12, 0.72), paint);
-  trunk.position.set(0, 1.02, -1.72);
-  const cabinBase = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.62, 2.12), glassMat);
-  cabinBase.position.set(0, 1.38, -0.22);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.12, 1.48), paint);
-  roof.position.set(0, 1.78, -0.25);
-  g.add(hood, trunk, cabinBase, roof);
-
-  // Window pillars and windshield panels.
-  for (const x of [-0.79, 0.79]) {
-    for (const z of [0.55, -1.05]) {
-      const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.68, 0.1), paint);
-      pillar.position.set(x, 1.48, z);
-      g.add(pillar);
-    }
-    const sideWindow = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.42, 0.82), glassMat);
-    sideWindow.position.set(x * 1.02, 1.51, -0.22);
-    g.add(sideWindow);
-    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.13, 0.22), trimMat);
-    mirror.position.set(x * 1.28, 1.25, 0.62);
-    g.add(mirror);
-  }
-  const frontGlass = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.48, 0.045), glassMat);
-  frontGlass.position.set(0, 1.52, 0.68);
-  frontGlass.rotation.x = -0.18;
-  const rearGlass = frontGlass.clone();
-  rearGlass.position.z = -1.22;
-  rearGlass.rotation.x = 0.18;
-  g.add(frontGlass, rearGlass);
-
-  // Front and rear bumpers, grille, badges and light clusters.
-  const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.2, 0.18), trimMat);
-  frontBumper.position.set(0, 0.43, 2.12);
-  const rearBumper = frontBumper.clone();
-  rearBumper.position.z = -2.12;
-  const grille = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.22, 0.045), grilleMat);
-  grille.position.set(0, 0.72, 2.13);
-  const lowerGrille = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.09, 0.045), chromeMat);
-  lowerGrille.position.set(0, 0.48, 2.14);
-  g.add(frontBumper, rearBumper, grille, lowerGrille);
-
+  g.name = 'papercar-suv-vehicle';
+  addSharedSUV(g);
+  // Keep the existing vehicle interaction/update interfaces intact.
   const wheels = [];
-  for (const [wx, wz] of [[-0.98, 1.3], [0.98, 1.3], [-0.98, -1.3], [0.98, -1.3]]) {
-    const wheel = new THREE.Group();
-    wheel.position.set(wx, 0.37, wz);
-    const tire = new THREE.Mesh(wheelGeo, wheelMat);
-    const rim = new THREE.Mesh(wheelRimGeo, chromeMat);
-    rim.rotation.y = Math.PI / 2;
-    const hub = new THREE.Mesh(wheelHubGeo, chromeMat);
-    wheel.add(tire, rim, hub);
-    g.add(wheel);
-    wheels.push(wheel);
-  }
-  for (const hx of [-0.62, 0.62]) {
-    const h = new THREE.Mesh(lightGeo, headMat);
-    h.position.set(hx, 0.83, 2.13);
-    const t = new THREE.Mesh(lightGeo, tailMat);
-    t.position.set(hx, 0.79, -2.13);
-    g.add(h, t);
-    const beam = new THREE.Mesh(carBeamGeo, carBeamMat);
-    beam.position.set(hx, 0.83, 9.12);
-    g.add(beam);
-    const reflector = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.05), chromeMat);
-    reflector.position.set(hx, 0.57, 2.15);
-    g.add(reflector);
-  }
-
-  // Door handles and subtle side skirts.
-  for (const side of [-1, 1]) {
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.055, 0.28), chromeMat);
-    handle.position.set(side * 1.015, 0.92, -0.28);
-    const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.13, 2.65), trimMat);
-    skirt.position.set(side * 1.01, 0.34, 0);
-    g.add(handle, skirt);
-  }
-
-  addInterior(g, 1.2);
   const doorPivot = new THREE.Group();
-  doorPivot.position.set(1.02, 0.75, 0.8);
-  const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.8, 1.7), paint);
-  doorMesh.position.set(0, 0, -0.85);
-  doorMesh.castShadow = true;
-  doorPivot.add(doorMesh);
+  doorPivot.name = 'vehicle-door-pivot';
   g.add(doorPivot);
-  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   scene.add(g);
   return { group: g, wheels, door: doorPivot };
 }
@@ -611,59 +574,14 @@ for (const [x, z, front] of [[-0.95, 1.4, true], [0.95, 1.4, true], [-0.95, -1.4
   wheelSpinners.push(spin);
   if (front) frontPivots.push(pivot);
 }
-// Keep the previous procedural model as a hidden fallback. The imported papercar
-// becomes the visible player vehicle while the existing driving physics stay unchanged.
+// The player vehicle uses the exact same SUV asset as parked, traffic, and police cars.
+const wheelSpinners = [];
+const frontPivots = [];
 const legacyCarVisual = new THREE.Group();
 legacyCarVisual.name = 'legacy-car-visual-hidden';
-for (const child of [...playerCar.children]) {
-  playerCar.remove(child);
-  legacyCarVisual.add(child);
-}
 legacyCarVisual.visible = false;
 playerCar.add(legacyCarVisual);
-
-// Load the user's papercar.glb and fit it to the existing vehicle footprint.
-const paperCarLoader = new GLTFLoader();
-paperCarLoader.load('./papercar.glb', gltf => {
-  const paperModel = gltf.scene;
-  paperModel.name = 'papercar-player-model';
-  paperModel.traverse(o => {
-    if (o.isMesh) {
-      o.castShadow = true;
-      o.receiveShadow = true;
-
-      // Improve the lighting on the existing model without changing its shape.
-      if (o.geometry && o.geometry.index) {
-        o.geometry = o.geometry.clone();
-        o.geometry.computeVertexNormals();
-      }
-
-      // Use smooth material shading and preserve the model's original textures/colors.
-      const polishMaterial = material => {
-        const m = material.clone();
-        m.flatShading = false;
-        m.needsUpdate = true;
-        return m;
-      };
-      o.material = Array.isArray(o.material)
-        ? o.material.map(polishMaterial)
-        : polishMaterial(o.material);
-    }
-  });
-  const bounds = new THREE.Box3().setFromObject(paperModel);
-  const size = new THREE.Vector3();
-  const center = new THREE.Vector3();
-  bounds.getSize(size);
-  bounds.getCenter(center);
-  const longestHorizontal = Math.max(size.x, size.z, 0.001);
-  const fitScale = 4.3 / longestHorizontal;
-  paperModel.scale.setScalar(fitScale);
-  paperModel.position.set(-center.x * fitScale, -bounds.min.y * fitScale, -center.z * fitScale);
-  playerCar.add(paperModel);
-}, undefined, error => {
-  console.error('Could not load papercar.glb:', error);
-  legacyCarVisual.visible = true;
-});
+addSharedSUV(playerCar);
 scene.add(playerCar);
 
 // Big floating arrow marking the usable car (hidden while you're inside)
@@ -2198,7 +2116,7 @@ const nearestRoad = v => ROADS.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - 
 
 function spawnPolice() {
   const car = buildCar();
-  car.group.children[0].material = policeMat;
+  // Police vehicles keep the same shared SUV model; roof lights identify them.
   const lightL = new THREE.Mesh(lightGeo2, policeRed);
   const lightR = new THREE.Mesh(lightGeo2, policeBlue);
   lightL.position.set(-0.4, 1.9, 0);
