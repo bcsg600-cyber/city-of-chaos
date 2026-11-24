@@ -1109,8 +1109,8 @@ function playPlayerAnimation(kind) {
   // The repository contains a run cycle and a standing-jump clip. Walk reuses
   // the run cycle at a slower rate; sprint uses it slightly faster. The jump
   // clip also covers the brief airborne/fall state. No unprovided clips are faked.
-  const key = kind === 'jump' || kind === 'fall' || kind === 'land' ? 'jump' : 'run';
-  const action = playerAnimationActions[key];
+  const key = kind === 'jump' ? nextJumpAnimation : (kind === 'fall' || kind === 'land' ? 'jump' : 'run');
+  const action = playerAnimationActions[key] || (key === 'jumpAlt' ? playerAnimationActions.jump : null);
   if (!action) return; // wait until the matching clip has loaded
   action.setEffectiveTimeScale(kind === 'walk' ? 0.62 : kind === 'sprint' ? 1.12 : 1);
   const oneShot = key === 'jump';
@@ -1128,7 +1128,11 @@ function playPlayerAnimation(kind) {
   activePlayerAction = action;
 }
 
+let nextJumpAnimation = 'jump';
 function setPlayerModelAnimation(kind) {
+  if (kind === 'jump' && desiredPlayerAnimation !== 'jump') {
+    nextJumpAnimation = nextJumpAnimation === 'jump' ? 'jumpAlt' : 'jump';
+  }
   desiredPlayerAnimation = kind;
   playPlayerAnimation(kind);
 }
@@ -1168,6 +1172,7 @@ function loadPlayerAnimation(url, key) {
 const pendingPlayerClips = {};
 loadPlayerAnimation('./indian-man-in-suit@Running.fbx', 'run');
 loadPlayerAnimation('./indian-man-in-suit@Standing Jump.fbx', 'jump');
+loadPlayerAnimation('./indian-man-in-suit@Standing Jump 2.fbx', 'jumpAlt');
 
 // Once the GLB mixer exists, bind any animation clips that finished loading first.
 function bindPendingPlayerClips() {
