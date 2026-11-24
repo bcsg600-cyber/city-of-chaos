@@ -2416,6 +2416,39 @@ function randomIntersection() {
   return { x: pick(ROADS), z: pick(ROADS) };
 }
 
+const cashPickups = [];
+const cashPickupGeo = new THREE.TorusGeometry(0.85, 0.22, 8, 18);
+const cashPickupMat = new THREE.MeshStandardMaterial({ color: 0x4ade80, emissive: 0x16a34a, emissiveIntensity: 1.2, metalness: 0.45, roughness: 0.3 });
+for (let i = 0; i < 12; i++) {
+  const token = new THREE.Mesh(cashPickupGeo, cashPickupMat);
+  token.rotation.x = Math.PI / 2;
+  token.position.set(pick(ROADS) + rand(-4, 4), 1.25, pick(ROADS) + rand(-4, 4));
+  scene.add(token);
+  cashPickups.push({ mesh: token, respawn: 0, phase: Math.random() * Math.PI * 2 });
+}
+function updateCashPickups(dt) {
+  for (const pickup of cashPickups) {
+    if (pickup.respawn > 0) {
+      pickup.respawn -= dt;
+      if (pickup.respawn <= 0) {
+        pickup.mesh.position.set(pick(ROADS) + rand(-4, 4), 1.25, pick(ROADS) + rand(-4, 4));
+        pickup.mesh.visible = true;
+      }
+      continue;
+    }
+    pickup.mesh.rotation.z += dt * 1.8;
+    pickup.mesh.position.y = 1.25 + Math.sin(elapsed * 2.5 + pickup.phase) * 0.18;
+    const d = Math.hypot(pos.x - pickup.mesh.position.x, pos.z - pickup.mesh.position.z);
+    if (d < 2.4) {
+      money += 100;
+      pickup.mesh.visible = false;
+      pickup.respawn = 18;
+      showMessage('Cash found! +$100', 2);
+      refreshHud();
+    }
+  }
+}
+
 function newMission() {
   mission.stage = 'pickup';
   mission.pickup = randomIntersection();
@@ -2524,6 +2557,7 @@ function busted() {
 }
 
 function updateGame(dt) {
+  updateCashPickups(dt);
   if (msgT > 0) {
     msgT -= dt;
     if (msgT <= 0) hudMsg.style.display = 'none';
