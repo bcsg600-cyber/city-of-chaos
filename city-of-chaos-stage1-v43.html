@@ -1194,10 +1194,10 @@ rigLoader.load(
         object.receiveShadow = true;
       }
     });
-    for (const part of [player.torso, player.head, player.hipL, player.hipR,
-      player.shoulderL, player.shoulderR]) {
-      if (part) part.visible = false;
-    }
+    // Keep the imported GLB hidden until its exact bone map is verified.
+    // The visible procedural rig below has known working joints and is animated
+    // by poseWalk/poseRun/poseJumpAir in the game update loop.
+    model.visible = false;
     avatar.add(model);
     const rigBones = [];
     model.traverse(object => { if (object.isBone) rigBones.push(object); });
