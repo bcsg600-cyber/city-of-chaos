@@ -1117,29 +1117,47 @@ characterLoader.load('./indian_man_in_suit.glb', gltf => {
   player.group.visible = true;
 });
 
+// Imported-character animation states are deliberately independent.
+// Each state can only select its own clip; a missing clip stays neutral.
+function stopImportedAnimation() {
+  if (activePlayerAction) {
+    activePlayerAction.fadeOut(0.18);
+    activePlayerAction = null;
+  }
+}
+function importedAnimationKey(kind) {
+  const stateClips = {
+    idle: null,
+    walk: 'walk',
+    sprint: 'run',
+    run: 'run',
+    jump: nextJumpAnimation,
+    fall: 'jump',
+    land: null,
+    sit: 'sit',
+    enter: null,
+    exit: null,
+    punch: null
+  };
+  return Object.prototype.hasOwnProperty.call(stateClips, kind) ? stateClips[kind] : null;
+}
 function playPlayerAnimation(kind) {
   if (!playerModelMixer) return;
-  // There is no punch/enter/exit clip in the supplied animation files. Do not
-  // accidentally play the running cycle for those states.
-  if (kind === 'idle' || kind === 'enter' || kind === 'exit' || kind === 'sit' || kind === 'punch' || kind === 'land') {
-    if (activePlayerAction) {
-      activePlayerAction.fadeOut(0.18);
-      activePlayerAction = null;
-    }
-    return; // use the model's neutral rig pose for these states
+  const key = importedAnimationKey(kind);
+  if (!key) {
+    stopImportedAnimation();
+    return;
   }
-  // The repository contains a run cycle and a standing-jump clip. Walk reuses
-  // the run cycle at a slower rate; sprint uses it slightly faster. The jump
-  // clip also covers the brief airborne/fall state. No unprovided clips are faked.
-  const key = kind === 'jump' ? nextJumpAnimation : (kind === 'fall' || kind === 'land' ? 'jump' : 'run');
-  const action = playerAnimationActions[key] || (key === 'jumpAlt' ? playerAnimationActions.jump : null);
-  if (!action) return; // wait until the matching clip has loaded
-  action.setEffectiveTimeScale(kind === 'walk' ? 0.62 : kind === 'sprint' ? 1.12 : 1);
+  const action = playerAnimationActions[key];
+  if (!action) {
+    // Do not substitute a different movement or body pose when an asset is absent.
+    stopImportedAnimation();
+    return;
+  }
   const oneShot = key === 'jump' || key === 'jumpAlt';
+  action.setEffectiveTimeScale(1);
   action.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity);
   action.clampWhenFinished = oneShot;
-  // A one-shot jump action remains the active action after it reaches its
-  // final frame. Restart it when the player jumps again instead of returning.
   if (activePlayerAction === action && (kind !== 'jump' || action.isRunning())) return;
   action.reset();
   action.enabled = true;
@@ -1188,7 +1206,7 @@ function loadPlayerAnimation(url, key) {
       return;
     }
     playerAnimationActions[key] = playerModelMixer.clipAction(clip);
-    if (desiredPlayerAnimation === key || (key === 'run' && (desiredPlayerAnimation === 'walk' || desiredPlayerAnimation === 'run'))) playPlayerAnimation(desiredPlayerAnimation);
+    if (desiredPlayerAnimation === key) playPlayerAnimation(desiredPlayerAnimation);
   }, undefined, error => console.error('Could not load character animation:', url, error));
 }
 const pendingPlayerClips = {};
