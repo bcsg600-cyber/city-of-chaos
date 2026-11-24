@@ -404,7 +404,10 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
         // Avoid per-car material copies; they waste memory and GPU upload time.
         o.castShadow = false;
         o.receiveShadow = false;
-        o.frustumCulled = true;
+        // Imported vehicle meshes can have bad source bounds; keep every body panel visible.
+        o.frustumCulled = false;
+        o.visible = true;
+        if (o.geometry && !o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
         const polish = material => {
           if (!material) return material;
           material.side = THREE.DoubleSide;
@@ -414,7 +417,8 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
         if (o.material) o.material = Array.isArray(o.material) ? o.material.map(polish) : polish(o.material);
       }
       const nodeName = (o.name || '').toLowerCase();
-      if (/wheel|tire|tyre/.test(nodeName) && !/steering/.test(nodeName)) wheelNodes.push(o);
+      // Do not rotate imported wheel nodes: many assets nest wheel meshes under
+      // wheel pivots, so rotating every name match causes double-rotation wobble.
       if (!importedDoor && /door/.test(nodeName) && !/handle|interior/.test(nodeName)) importedDoor = o;
     });
     // Normalize the imported model from its complete bounds before adding it.
@@ -965,6 +969,8 @@ let playerModel = null;
 let playerModelMixer = null;
 let playerAnimationActions = {};
 let desiredPlayerAnimation = 'idle';
+let playerBoneRig = null;
+let playerAnimationClock = 0;
 let activePlayerAction = null;
 const characterLoader = new GLTFLoader();
 characterLoader.load('./indian_man_in_suit.glb', gltf => {
@@ -992,7 +998,7 @@ characterLoader.load('./indian_man_in_suit.glb', gltf => {
   const center = new THREE.Vector3();
   bounds.getSize(size);
   bounds.getCenter(center);
-  const targetHeight = 2.8; // larger player model for clearer visibility in the city
+  const targetHeight = 2.15; // match the scale of the game's built-in pedestrians
   const scale = targetHeight / Math.max(size.y, 0.001);
   playerModel.scale.setScalar(scale);
   playerModel.position.x = -center.x * scale;
@@ -1001,6 +1007,25 @@ characterLoader.load('./indian_man_in_suit.glb', gltf => {
   avatar.add(playerModel);
 
   playerModelMixer = new THREE.AnimationMixer(playerModel);
+  // Build a small procedural rig as a reliable fallback for Mixamo clips whose
+  // FBX bone paths do not exactly match the GLB skeleton's node names.
+  const bones = {};
+  playerModel.traverse(o => {
+    if (!o.isBone) return;
+    const n = (o.name || '').toLowerCase().replace(/^mixamorig/, '').replace(/[^a-z0-9]/g, '');
+    if (n.includes('leftupleg') || n === 'leftthigh') bones.leftThigh = o;
+    else if (n.includes('rightupleg') || n === 'rightthigh') bones.rightThigh = o;
+    else if (n.includes('leftleg') && !n.includes('upleg')) bones.leftShin = o;
+    else if (n.includes('rightleg') && !n.includes('upleg')) bones.rightShin = o;
+    else if (n.includes('leftarm') && !n.includes('forearm')) bones.leftArm = o;
+    else if (n.includes('rightarm') && !n.includes('forearm')) bones.rightArm = o;
+    else if (n.includes('leftforearm')) bones.leftForearm = o;
+    else if (n.includes('rightforearm')) bones.rightForearm = o;
+    else if (n === 'hips' || n === 'pelvis') bones.hips = o;
+  });
+  const bases = {};
+  for (const [key, bone] of Object.entries(bones)) bases[key] = bone.rotation.clone();
+  playerBoneRig = { bones, bases };
   playPlayerAnimation(desiredPlayerAnimation);
 }, undefined, error => {
   console.error('Could not load indian_man_in_suit.glb; showing fallback character.', error);
@@ -1033,6 +1058,26 @@ function playPlayerAnimation(kind) {
 function setPlayerModelAnimation(kind) {
   desiredPlayerAnimation = kind;
   playPlayerAnimation(kind);
+}
+
+function updateImportedCharacterAnimation(dt) {
+  if (!playerBoneRig) return;
+  playerAnimationClock += dt;
+  const { bones, bases } = playerBoneRig;
+  const moving = desiredPlayerAnimation === 'walk' || desiredPlayerAnimation === 'run' || desiredPlayerAnimation === 'enter' || desiredPlayerAnimation === 'exit';
+  const jumping = desiredPlayerAnimation === 'jump';
+  const rate = desiredPlayerAnimation === 'run' ? 13 : 8;
+  const swing = moving ? Math.sin(playerAnimationClock * rate) * (desiredPlayerAnimation === 'run' ? 0.62 : 0.38) : 0;
+  for (const [key, bone] of Object.entries(bones)) bone.rotation.copy(bases[key]);
+  if (bones.leftThigh) bones.leftThigh.rotation.x += jumping ? -0.65 : swing;
+  if (bones.rightThigh) bones.rightThigh.rotation.x += jumping ? -0.65 : -swing;
+  if (bones.leftShin) bones.leftShin.rotation.x += jumping ? 0.9 : Math.max(0, -swing) * 0.8;
+  if (bones.rightShin) bones.rightShin.rotation.x += jumping ? 0.9 : Math.max(0, swing) * 0.8;
+  if (bones.leftArm) { bones.leftArm.rotation.x += moving ? -swing * 0.75 : 0; bones.leftArm.rotation.z += 1.05; }
+  if (bones.rightArm) { bones.rightArm.rotation.x += moving ? swing * 0.75 : 0; bones.rightArm.rotation.z -= 1.05; }
+  if (bones.leftForearm) bones.leftForearm.rotation.x += moving ? -0.18 : 0.08;
+  if (bones.rightForearm) bones.rightForearm.rotation.x += moving ? -0.18 : 0.08;
+  if (bones.hips) bones.hips.rotation.x += jumping ? -0.12 : moving ? 0.06 : 0;
 }
 
 // The FBX clips were exported for this character. Only their animation tracks are
@@ -1757,12 +1802,12 @@ function updateCar(dt) {
   car.x = clamp(car.x, -388, 388);
   car.z = clamp(car.z, -388, 185);
 
-  car.wheelSpin += car.speed * dt / 0.35;
+  // Wheel rotation is intentionally disabled until the GLB wheel pivots are verified.
   car.shake = Math.max(0, car.shake - dt);
 
   activeVeh.group.position.set(car.x, 0, car.z);
   activeVeh.group.rotation.y = car.h;
-  for (const spin of activeVeh.spinners) spin.rotation.x = car.wheelSpin;
+  // Do not rotate arbitrary imported wheel nodes; this avoids visible wheel glitching.
   for (const p of activeVeh.pivots) p.rotation.y = car.steer;
   if (activeVeh.tail) activeVeh.tail.emissiveIntensity = brake > 0 || handbrake ? 2 : 0.2;
 
@@ -1860,7 +1905,7 @@ function updateTraffic(dt) {
       t.group.position.set(t.p, 0, t.lane);
       t.group.rotation.y = t.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
     }
-    for (const w of t.wheels) w.rotation.x += t.speed * dt / 0.35;
+    // Imported wheel pivots vary by asset; leave them fixed to avoid axis wobble.
   }
 }
 
@@ -2099,7 +2144,7 @@ function updatePolice(dt) {
     }
     p.car.group.position.set(p.x, 0, p.z);
     p.car.group.rotation.y = p.h;
-    for (const w of p.car.wheels) w.rotation.x += speed * dt / 0.35;
+    // Keep imported police wheels fixed until their actual pivot axes are verified.
     p.flashT += dt;
     const redOn = Math.floor(p.flashT * 4) % 2 === 0;
     policeRed.emissiveIntensity = redOn ? 3 : 0;
@@ -2286,6 +2331,7 @@ function loop(timestamp = 0) {
     bindPendingPlayerClips();
     playerModelMixer.update(dt);
   }
+  updateImportedCharacterAnimation(dt);
   updateEnvironment(dt);
   updateTraffic(dt);
   updateWalkers(dt);
