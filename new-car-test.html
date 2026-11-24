@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>City of Chaos — New Car Test</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10141c;color:#fff;font:14px system-ui}
+#view{position:fixed;inset:0}#panel{position:fixed;left:12px;top:12px;max-width:min(360px,calc(100vw - 48px));padding:12px 14px;background:#111a;color:#fff;border:1px solid #ffffff24;border-radius:12px;backdrop-filter:blur(10px)}
+#title{font-weight:700;font-size:16px}#status{margin-top:6px;color:#b9c7d8;line-height:1.4}#controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button{background:#26364b;color:white;border:1px solid #52677f;border-radius:8px;padding:8px 11px;font-weight:600}
+#hint{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);background:#111b;padding:8px 12px;border-radius:9px;color:#d5deea;white-space:nowrap}
+</style>
+</head>
+<body><div id="view"></div>
+<div id="panel"><div id="title">New Car — GLB Preview</div><div id="status">Loading 2.glb…</div><div id="controls"><button id="reset">Reset view</button><button id="bright">Show visible materials</button></div></div>
+<div id="hint">Drag to rotate · Pinch or scroll to zoom</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+import {OrbitControls} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+const status=document.querySelector('#status');
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x171d27);
+const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.01,2000);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
+document.querySelector('#view').appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xdceaff,0x29303b,2.0));
+const key=new THREE.DirectionalLight(0xffffff,3.2);key.position.set(8,12,10);scene.add(key);
+const fill=new THREE.DirectionalLight(0x8bbcff,1.6);fill.position.set(-10,5,-8);scene.add(fill);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshStandardMaterial({color:0x252c36,roughness:.9}));
+ground.rotation.x=-Math.PI/2;ground.position.y=-.04;scene.add(ground);
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.target.set(0,1,0);
+let car=null, originalMaterials=[], brightMode=true, home=null;
+function visibleMaterial(mesh){
+ const n=(mesh.name||'').toLowerCase();
+ let color=0x9aa3ad,metal=0.35,rough=.48,opacity=1,transparent=false,emissive=0x000000;
+ if(/tire|rubber/.test(n)){color=0x17191d;rough=.92;metal=0;}
+ else if(/wheel|rim|spoke|hub|brake|disc/.test(n)){color=/brake/.test(n)?0xb32626:0xaeb8c4;metal=.85;rough=.28;}
+ else if(/glass|window|windshield/.test(n)){color=0x253d55;metal=.25;rough=.15;opacity=.72;transparent=true;}
+ else if(/light|lamp|head.?lamp|taillight|rearlight/.test(n)){color=/rear|tail/.test(n)?0xb51e28:0xf4f1df;emissive=color;metal=.1;rough=.22;}
+ else if(/seat|leather|interior|dash/.test(n)){color=0x292b30;rough=.78;metal=0;}
+ else if(/exhaust|chrome|grille|badge|plate/.test(n)){color=0xb8c1cb;metal=.9;rough=.25;}
+ else if(/body|bumper|hood|door|fender|roof|carpaint|spoiler|trunk/.test(n)){color=0x1765a8;metal=.72;rough=.24;}
+ return new THREE.MeshStandardMaterial({color,metalness:metal,roughness:rough,transparent,opacity,emissive,emissiveIntensity:.35,side:THREE.DoubleSide});
+}
+function applyMaterials(){
+ if(!car)return;
+ car.traverse(o=>{if(!o.isMesh)return;if(!o.userData.originalSaved){o.userData.originalSaved=true;o.userData.originalMaterial=o.material;}
+ o.material=brightMode?visibleMaterial(o):o.userData.originalMaterial;});
+}
+const loader=new GLTFLoader();
+loader.load('./2.glb',g=>{
+ car=g.scene;car.updateMatrixWorld(true);
+ const box=new THREE.Box3().setFromObject(car),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
+ if(!Number.isFinite(size.x)||size.length()<.001){status.textContent='Model loaded but has no visible geometry.';return;}
+ const scale=6/Math.max(size.x,size.y,size.z);car.scale.setScalar(scale);
+ car.position.sub(center.multiplyScalar(scale));car.position.y-=new THREE.Box3().setFromObject(car).min.y;
+ scene.add(car);car.updateMatrixWorld(true);
+ const fitted=new THREE.Box3().setFromObject(car),s=fitted.getSize(new THREE.Vector3()),c=fitted.getCenter(new THREE.Vector3());
+ controls.target.copy(c);
+ const radius=Math.max(s.x,s.y,s.z);camera.position.set(c.x+radius*1.8,c.y+radius*1.0,c.z+radius*2.1);
+ camera.near=Math.max(.01,radius/100);camera.far=radius*100;camera.updateProjectionMatrix();controls.update();
+ home={position:camera.position.clone(),target:controls.target.clone()};
+ applyMaterials();
+ let meshes=0;car.traverse(o=>{if(o.isMesh)meshes++;});
+ status.textContent='Loaded successfully · '+meshes+' mesh parts · '+Math.round(size.x*100)/100+' × '+Math.round(size.y*100)/100+' × '+Math.round(size.z*100)/100+' model units. Materials are brightened for visibility in this test.';
+},p=>{if(p.total)status.textContent='Loading '+Math.round(p.loaded/p.total*100)+'%…';},e=>{console.error(e);status.textContent='Could not load 2.glb: '+(e?.message||'unknown error');});
+document.querySelector('#reset').onclick=()=>{if(home){camera.position.copy(home.position);controls.target.copy(home.target);controls.update();}};
+document.querySelector('#bright').onclick=()=>{brightMode=!brightMode;applyMaterials();document.querySelector('#bright').textContent=brightMode?'Show original materials':'Show visible materials';};
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+renderer.setAnimationLoop(()=>{controls.update();renderer.render(scene,camera);});
+</script></body></html>
