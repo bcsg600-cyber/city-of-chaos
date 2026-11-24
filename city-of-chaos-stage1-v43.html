@@ -1113,7 +1113,7 @@ function playPlayerAnimation(kind) {
   const action = playerAnimationActions[key] || (key === 'jumpAlt' ? playerAnimationActions.jump : null);
   if (!action) return; // wait until the matching clip has loaded
   action.setEffectiveTimeScale(kind === 'walk' ? 0.62 : kind === 'sprint' ? 1.12 : 1);
-  const oneShot = key === 'jump';
+  const oneShot = key === 'jump' || key === 'jumpAlt';
   action.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity);
   action.clampWhenFinished = oneShot;
   // A one-shot jump action remains the active action after it reaches its
