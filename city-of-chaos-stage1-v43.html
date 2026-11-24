@@ -391,26 +391,31 @@ function addInterior(group, yBase) {
 let sharedSUVTemplate = null;
 let sharedSUVLoading = false;
 const sharedSUVWaiters = [];
-function addSharedSUV(group) {
+function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
   const attach = template => {
     const model = template.clone(true);
     model.name = 'shared-papercar-suv';
+    const wheelNodes = [];
+    let importedDoor = null;
     model.traverse(o => {
-      if (!o.isMesh) return;
-      o.castShadow = true;
-      o.receiveShadow = true;
-      // Prevent one-sided surfaces and stale bounds from making parts disappear.
-      o.frustumCulled = false;
-      const polish = material => {
-        const copy = material.clone();
-        copy.side = THREE.DoubleSide;
-        copy.needsUpdate = true;
-        return copy;
-      };
-      o.material = Array.isArray(o.material) ? o.material.map(polish) : polish(o.material);
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+        // Avoid incorrectly culled parts on imported or thin vehicle geometry.
+        o.frustumCulled = false;
+        const polish = material => {
+          const copy = material.clone();
+          copy.side = THREE.DoubleSide;
+          copy.needsUpdate = true;
+          return copy;
+        };
+        if (o.material) o.material = Array.isArray(o.material) ? o.material.map(polish) : polish(o.material);
+      }
+      const nodeName = (o.name || '').toLowerCase();
+      if (/wheel|tire|tyre/.test(nodeName) && !/steering/.test(nodeName)) wheelNodes.push(o);
+      if (!importedDoor && /door/.test(nodeName) && !/handle|interior/.test(nodeName)) importedDoor = o;
     });
-    // Normalize the imported model using its full world-space bounds before
-    // attaching it, so nested GLB transforms cannot leave the vehicle offset.
+    // Normalize the imported model from its complete bounds before adding it.
     model.updateMatrixWorld(true);
     const bounds = new THREE.Box3().setFromObject(model);
     const size = new THREE.Vector3();
@@ -422,30 +427,9 @@ function addSharedSUV(group) {
     model.scale.setScalar(scale);
     model.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
     model.updateMatrixWorld(true);
-
-    // The supplied SUV asset is rendering as only one side in the game.
-    // Mirror a second copy across the vehicle's centerline to complete the body.
-    // If the source already contains both sides, the mirrored copy aligns with it.
-    const mirroredHalf = model.clone(true);
-    mirroredHalf.name = 'shared-papercar-suv-mirrored-side';
-    mirroredHalf.scale.x *= -1;
-    mirroredHalf.position.x *= -1;
-    mirroredHalf.traverse(o => {
-      if (!o.isMesh) return;
-      o.frustumCulled = false;
-      o.castShadow = true;
-      o.receiveShadow = true;
-      if (o.material) {
-        const polish = m => {
-          const copy = m.clone();
-          copy.side = THREE.DoubleSide;
-          copy.needsUpdate = true;
-          return copy;
-        };
-        o.material = Array.isArray(o.material) ? o.material.map(polish) : polish(o.material);
-      }
-    });
-    group.add(model, mirroredHalf);
+    group.add(model);
+    for (const wheel of wheelNodes) wheelTargets.push(wheel);
+    if (doorTarget && importedDoor) doorTarget.userData.importedDoor = importedDoor;
   };
   if (sharedSUVTemplate) {
     attach(sharedSUVTemplate);
@@ -466,12 +450,11 @@ function addSharedSUV(group) {
 function buildCar() {
   const g = new THREE.Group();
   g.name = 'papercar-suv-vehicle';
-  addSharedSUV(g);
-  // Keep the existing vehicle interaction/update interfaces intact.
   const wheels = [];
   const doorPivot = new THREE.Group();
   doorPivot.name = 'vehicle-door-pivot';
   g.add(doorPivot);
+  addSharedSUV(g, wheels, doorPivot);
   scene.add(g);
   return { group: g, wheels, door: doorPivot };
 }
@@ -530,7 +513,7 @@ playerCar.name = 'player-shared-papercar-suv';
 const wheelSpinners = [];
 const frontPivots = [];
 // The exact same papercar.glb is loaded for the player and every other vehicle.
-addSharedSUV(playerCar);
+addSharedSUV(playerCar, wheelSpinners);
 scene.add(playerCar);
 
 // Big floating arrow marking the usable car (hidden while you're inside)
@@ -1001,6 +984,7 @@ characterLoader.load('./indian_man_in_suit.glb', gltf => {
   });
 
   // Fit the supplied model to the existing character height and place its feet at ground level.
+  playerModel.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(playerModel);
   const size = new THREE.Vector3();
   const center = new THREE.Vector3();
@@ -1519,9 +1503,11 @@ function updateSeq(dt) {
   seq.t += dt;
   const tt = seq.t;
   const door = seq.veh.door;
+  const importedDoor = door && door.userData ? door.userData.importedDoor : null;
   if (seq.type === 'enter') {
     const open = tt < 0.5 ? ease(tt / 0.5) : tt > 1.1 ? 1 - ease(Math.min(1, (tt - 1.1) / 0.5)) : 1;
     door.rotation.y = -1.0 * open;
+    if (importedDoor) importedDoor.rotation.y = -1.0 * open;
     const seat = seatPos(seq.x, seq.z, seq.h);
     const k = ease(Math.min(1, Math.max(0, (tt - 0.5) / 0.6)));
     avatar.position.set(lerpN(seq.startX, seat.x, k), lerpN(0, -0.42, k), lerpN(seq.startZ, seat.z, k));
@@ -1529,7 +1515,7 @@ function updateSeq(dt) {
     if (tt < 0.5) { poseIdle(player); setPlayerModelAnimation('idle'); }
     else if (tt < 1.1) { poseWalk(player, Math.sin(tt * 12) * 0.6); setPlayerModelAnimation('enter'); }
     else { poseSeated(player); setPlayerModelAnimation('sit'); }
-    if (tt >= seq.dur) { door.rotation.y = 0; finishEnter(); }
+    if (tt >= seq.dur) { door.rotation.y = 0; if (importedDoor) importedDoor.rotation.y = 0; finishEnter(); }
   } else {
     const open = tt < 0.4 ? ease(tt / 0.4) : tt > 1.0 ? 1 - ease(Math.min(1, (tt - 1.0) / 0.4)) : 1;
     door.rotation.y = -1.0 * open;
@@ -1541,7 +1527,7 @@ function updateSeq(dt) {
     if (tt < 0.4) { poseSeated(player); setPlayerModelAnimation('sit'); }
     else if (tt < 0.9) { poseWalk(player, Math.sin(tt * 12) * 0.6); setPlayerModelAnimation('exit'); }
     else { poseIdle(player); setPlayerModelAnimation('idle'); }
-    if (tt >= seq.dur) { door.rotation.y = 0; finishExit(); }
+    if (tt >= seq.dur) { door.rotation.y = 0; if (importedDoor) importedDoor.rotation.y = 0; finishExit(); }
   }
 }
 
