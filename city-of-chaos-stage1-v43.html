@@ -527,21 +527,48 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
           o.geometry.drawRange.count = Infinity;
           if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
         }
-        const polish = material => {
-          if (!material) return material;
-          // Some exported vehicle materials arrive hidden; restore them while
-          // keeping their original opacity, maps, and surface properties.
+        const styleGameVehicleMaterial = source => {
+          if (!source) return source;
+          const label = ((o.name || '') + ' ' + (source.name || '')).toLowerCase();
+          const material = source.clone();
           material.visible = true;
-          // Recover fully transparent exports that otherwise make cars vanish.
+          material.side = THREE.DoubleSide;
           if (material.opacity !== undefined && material.opacity <= 0.01) {
             material.opacity = 1;
             material.transparent = false;
           }
-          material.side = THREE.DoubleSide;
+          // The new Shelby GLB has no embedded texture images, so give its
+          // named parts readable game materials instead of rendering near-black.
+          if (material.color) {
+            if (/tire|rubber/.test(label)) {
+              material.color.setHex(0x17191d); material.roughness = 0.94; material.metalness = 0.02;
+            } else if (/glass|window|windshield/.test(label)) {
+              material.color.setHex(0x263e58); material.roughness = 0.16; material.metalness = 0.22;
+              material.transparent = true; material.opacity = 0.78;
+            } else if (/brake|caliper/.test(label)) {
+              material.color.setHex(0xb32626); material.roughness = 0.38; material.metalness = 0.35;
+            } else if (/wheel|rim|spoke|hub|disc/.test(label)) {
+              material.color.setHex(0xaeb8c4); material.roughness = 0.28; material.metalness = 0.86;
+            } else if (/light|lamp|head.?lamp|taillight|rearlight/.test(label)) {
+              material.color.setHex(/rear|tail/.test(label) ? 0xb51e28 : 0xf4f1df);
+              material.emissive = new THREE.Color(/rear|tail/.test(label) ? 0x6b080e : 0x625b43);
+              material.emissiveIntensity = 0.3; material.roughness = 0.22;
+            } else if (/seat|leather|interior|dash/.test(label)) {
+              material.color.setHex(0x292b30); material.roughness = 0.8; material.metalness = 0.02;
+            } else if (/exhaust|chrome|grille|badge|plate/.test(label)) {
+              material.color.setHex(0xb8c1cb); material.roughness = 0.25; material.metalness = 0.9;
+            } else if (/body|bumper|hood|door|fender|roof|carpaint|paint|spoiler|trunk|shell/.test(label)) {
+              material.color.setHex(0x1765a8); material.roughness = 0.24; material.metalness = 0.72;
+            } else {
+              material.color.setHex(0x858f9b); material.roughness = 0.48; material.metalness = 0.35;
+            }
+          }
           material.needsUpdate = true;
           return material;
         };
-        if (o.material) o.material = Array.isArray(o.material) ? o.material.map(polish) : polish(o.material);
+        if (o.material) o.material = Array.isArray(o.material)
+          ? o.material.map(styleGameVehicleMaterial)
+          : styleGameVehicleMaterial(o.material);
       }
       const nodeName = (o.name || '').toLowerCase();
       // Do not rotate imported wheel nodes: many assets nest wheel meshes under
@@ -579,11 +606,11 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
   sharedSUVWaiters.push(attach);
   if (sharedSUVLoading) return;
   sharedSUVLoading = true;
-  new GLTFLoader().load('./papercar.glb', gltf => {
+  new GLTFLoader().load('./2.glb', gltf => {
     sharedSUVTemplate = gltf.scene;
     for (const waiter of sharedSUVWaiters.splice(0)) waiter(sharedSUVTemplate);
   }, undefined, error => {
-    console.error('Could not load shared papercar.glb:', error);
+    console.error('Could not load shared 2.glb Shelby vehicle:', error);
     sharedSUVLoading = false;
     // Do not leave invisible NPC vehicles with invisible bodies and solid colliders.
     for (const rec of parkedRecs) {
