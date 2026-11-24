@@ -34,6 +34,41 @@
   #useBtn { bottom: 120px; right: 24px; background: rgba(16, 185, 129, 0.7); }
   #jumpBtn { bottom: 24px; right: 120px; }
   #sprintBtn { bottom: 120px; right: 120px; }
+  #mapBtn {
+    position: fixed; top: 12px; right: 12px; z-index: 12;
+    border: 1px solid rgba(255,255,255,.45); border-radius: 10px;
+    padding: 10px 14px; color: white; background: rgba(15,23,42,.82);
+    font: 700 14px system-ui,sans-serif; touch-action: manipulation;
+  }
+  #mapOverlay {
+    position: fixed; inset: 0; z-index: 30; display: none; place-items: center;
+    padding: 12px; background: rgba(2,6,23,.88); box-sizing: border-box;
+  }
+  #mapCard {
+    width: min(94vw, 760px); max-height: 94vh; overflow: auto; padding: 14px;
+    box-sizing: border-box; border: 1px solid rgba(255,255,255,.2);
+    border-radius: 16px; background: #111827; color: white;
+  }
+  #mapTop { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+  #mapTop button { border:0; border-radius:8px; padding:8px 12px; color:white; background:#374151; font-weight:700; }
+  #cityMap { display:block; width:100%; aspect-ratio:1; background:#263b32; border-radius:10px; }
+  #mapLegend { display:flex; flex-wrap:wrap; gap:12px; margin-top:10px; color:#d1d5db; font-size:12px; }
+  .mapDot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; }
+  #carControls {
+    position:fixed; right:16px; bottom:16px; z-index:9;
+    display:none; grid-template-columns:repeat(3,68px); grid-template-rows:repeat(2,62px);
+    gap:8px; touch-action:none; user-select:none; -webkit-user-select:none;
+  }
+  #carControls button {
+    border:1px solid rgba(255,255,255,.55); border-radius:14px;
+    color:white; background:rgba(15,23,42,.82); font:700 13px system-ui,sans-serif;
+    touch-action:none; -webkit-tap-highlight-color:transparent;
+  }
+  #carControls button:active, #carControls button.pressed { filter:brightness(1.35); }
+  #carControls #carLeft { grid-column:1; grid-row:1; }
+  #carControls #carGas { grid-column:2; grid-row:1; background:rgba(22,101,52,.9); }
+  #carControls #carRight { grid-column:3; grid-row:1; }
+  #carControls #carBrake { grid-column:2; grid-row:2; background:rgba(153,27,27,.9); }
   @media (pointer: coarse) {
     .stick, .btn { display: block; }
     #hud { font-size: 12px; }
@@ -58,6 +93,25 @@
 <button id="sprintBtn" class="btn">RUN</button>
 <button id="jumpBtn" class="btn">JUMP</button>
 <button id="punchBtn" class="btn">PUNCH</button>
+<button id="mapBtn" type="button">MAP</button>
+<div id="mapOverlay" role="dialog" aria-modal="true" aria-label="City map">
+  <div id="mapCard">
+    <div id="mapTop"><strong>FULL CITY MAP</strong><button id="closeMap" type="button">CLOSE ✕</button></div>
+    <canvas id="cityMap" width="720" height="720"></canvas>
+    <div id="mapLegend">
+      <span><i class="mapDot" style="background:#38bdf8"></i>You</span>
+      <span><i class="mapDot" style="background:#facc15"></i>Your car</span>
+      <span><i class="mapDot" style="background:#facc15"></i>Pickup</span>
+      <span><i class="mapDot" style="background:#4ade80"></i>Delivery</span>
+    </div>
+  </div>
+</div>
+<div id="carControls" aria-label="Dedicated car controls">
+  <button id="carLeft" type="button">◀ LEFT</button>
+  <button id="carGas" type="button">GAS ▲</button>
+  <button id="carRight" type="button">RIGHT ▶</button>
+  <button id="carBrake" type="button">BRAKE ▼</button>
+</div>
 
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
@@ -199,6 +253,8 @@ const LOT = BLOCK - ROAD;
 const ROADS = [];
 for (let k = -4.5; k <= 4.5; k++) ROADS.push(k * BLOCK);
 const colliders = [];
+// Building footprints are retained for the full-city map overlay.
+const mapBuildings = [];
 
 const dashMat = new THREE.MeshStandardMaterial({ color: 0xfff3a0, map: makeDashTex(), transparent: true, roughness: 0.6 });
 const dashGeo = new THREE.PlaneGeometry(0.35, 800);
@@ -287,6 +343,7 @@ for (let gx = -4; gx <= 4; gx++) {
     building.castShadow = true;
     building.receiveShadow = true;
     scene.add(building);
+    mapBuildings.push({ x: bx, z: bz, w, d });
 
     if (Math.random() < 0.4) {
       const rh = rand(2, 5);
@@ -1029,12 +1086,16 @@ function playPlayerAnimation(kind) {
     }
     return; // use the model's neutral rig pose for these states
   }
-  const key = kind === 'jump' ? 'jump' : 'run';
+  // The repository contains a run cycle and a standing-jump clip. Walk reuses
+  // the run cycle at a slower rate; sprint uses it slightly faster. The jump
+  // clip also covers the brief airborne/fall state. No unprovided clips are faked.
+  const key = kind === 'jump' || kind === 'fall' || kind === 'land' ? 'jump' : 'run';
   const action = playerAnimationActions[key];
   if (!action) return; // wait until the matching clip has loaded
-  action.setEffectiveTimeScale(kind === 'walk' ? 0.62 : 1);
-  action.setLoop(kind === 'jump' ? THREE.LoopOnce : THREE.LoopRepeat, kind === 'jump' ? 1 : Infinity);
-  action.clampWhenFinished = kind === 'jump';
+  action.setEffectiveTimeScale(kind === 'walk' ? 0.62 : kind === 'sprint' ? 1.12 : 1);
+  const oneShot = key === 'jump';
+  action.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity);
+  action.clampWhenFinished = oneShot;
   // A one-shot jump action remains the active action after it reaches its
   // final frame. Restart it when the player jumps again instead of returning.
   if (activePlayerAction === action && (kind !== 'jump' || action.isRunning())) return;
@@ -1317,6 +1378,25 @@ function holdButton(el, code) {
 }
 holdButton(jumpBtn, 'Space');
 holdButton(sprintBtn, 'ShiftLeft');
+
+// Dedicated press-and-hold car controls for touchscreens.
+for (const [id, key] of [['carLeft','CarLeft'],['carRight','CarRight'],['carGas','CarGas'],['carBrake','CarBrake']]) {
+  const button = document.getElementById(id);
+  const release = e => {
+    if (e) e.preventDefault();
+    keys[key] = false;
+    button.classList.remove('pressed');
+  };
+  button.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    keys[key] = true;
+    button.classList.add('pressed');
+    try { button.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  button.addEventListener('pointerup', release);
+  button.addEventListener('pointercancel', release);
+  button.addEventListener('lostpointercapture', release);
+}
 useBtn.addEventListener('touchstart', e => { e.preventDefault(); toggleCar(); }, { passive: false });
 useBtn.addEventListener('click', toggleCar);
 
@@ -1689,8 +1769,9 @@ function updateOnFoot(dt) {
   }
 
   const walking = moving && onGround && jumpState === 'ground';
-  if (jumpState === 'air' || jumpState === 'crouch' || jumpState === 'land') setPlayerModelAnimation('jump');
-  else if (walking && sprint) setPlayerModelAnimation('run');
+  if (jumpState === 'air') setPlayerModelAnimation('jump');
+  else if (jumpState === 'crouch' || jumpState === 'land') setPlayerModelAnimation('land');
+  else if (walking && sprint) setPlayerModelAnimation('sprint');
   else if (walking) setPlayerModelAnimation('walk');
   else setPlayerModelAnimation('idle');
   let lean = walking && sprint ? 0.12 : 0;
@@ -1741,10 +1822,12 @@ function updateOnFoot(dt) {
 function updateCar(dt) {
   const fixCar = carFreeSpot();
   if (fixCar) { car.x = fixCar.x; car.z = fixCar.z; car.speed = 0; }
-  const throttle = Math.max(keys.KeyW || keys.ArrowUp ? 1 : 0, clamp(-stickVec.y, 0, 1));
-  const brake = Math.max(keys.KeyS || keys.ArrowDown ? 1 : 0, clamp(stickVec.y, 0, 1));
-  const keySteer = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0);
-  const steerIn = clamp(keySteer - stickVec.x, -1, 1);
+  // Driving uses its own touch buttons; the walking joystick never doubles as gas.
+  const throttle = (keys.KeyW || keys.ArrowUp || keys.CarGas) ? 1 : 0;
+  const brake = (keys.KeyS || keys.ArrowDown || keys.CarBrake) ? 1 : 0;
+  const keySteer = (keys.KeyA || keys.ArrowLeft || keys.CarLeft ? 1 : 0)
+    - (keys.KeyD || keys.ArrowRight || keys.CarRight ? 1 : 0);
+  const steerIn = clamp(keySteer, -1, 1);
   const handbrake = keys.Space;
 
   if (throttle > 0) {
@@ -1990,6 +2073,11 @@ function updateHud() {
   useBtn.style.display = canEnter || canExit || nearParked ? '' : 'none';
   useBtn.textContent = !inCar && !canEnter && nearParked ? 'STEAL' : 'USE';
   punchBtn.style.display = inCar ? 'none' : '';
+  const carControls = document.getElementById('carControls');
+  carControls.style.display = isMobileDevice && inCar ? 'grid' : 'none';
+  stick.style.display = inCar ? 'none' : '';
+  sprintBtn.style.display = inCar ? 'none' : '';
+  jumpBtn.style.display = inCar ? 'none' : '';
 
   if (inCar) {
     statusEl.textContent = 'Driving: ' + Math.round(Math.abs(car.speed) * 3.6) + ' km/h';
@@ -2003,6 +2091,65 @@ function updateHud() {
     promptEl.style.display = near || nearestParked() ? 'block' : 'none';
   }
 }
+
+// ---------- Full-city map ----------
+const mapOverlay = document.getElementById('mapOverlay');
+const mapCanvas = document.getElementById('cityMap');
+const mapCtx = mapCanvas.getContext('2d');
+let mapOpen = false;
+let mapDrawTimer = 0;
+function worldToMapX(x) { return (x + 450) / 900 * mapCanvas.width; }
+function worldToMapY(z) { return (450 - z) / 900 * mapCanvas.height; }
+function drawCityMap() {
+  if (!mapCtx) return;
+  const c = mapCtx, w = mapCanvas.width, h = mapCanvas.height;
+  c.clearRect(0, 0, w, h);
+  c.fillStyle = '#385746'; c.fillRect(0, 0, w, h);
+  // Ocean, beach, and city land.
+  c.fillStyle = '#17618b'; c.fillRect(0, 0, w, worldToMapY(205));
+  c.fillStyle = '#e5d39b'; c.fillRect(0, worldToMapY(205), w, Math.max(3, worldToMapY(188)-worldToMapY(205)));
+  // City blocks and building footprints.
+  for (const b of mapBuildings) {
+    const x = worldToMapX(b.x - b.w/2), y = worldToMapY(b.z + b.d/2);
+    c.fillStyle = '#64748b';
+    c.fillRect(x, y, b.w/900*w, b.d/900*h);
+  }
+  // Full road grid, including the outer roads.
+  c.strokeStyle = '#c5cbd1'; c.lineWidth = ROAD/900*w;
+  for (const r of ROADS) {
+    const px = worldToMapX(r), py = worldToMapY(r);
+    c.beginPath(); c.moveTo(px, 0); c.lineTo(px, h); c.stroke();
+    c.beginPath(); c.moveTo(0, py); c.lineTo(w, py); c.stroke();
+  }
+  c.strokeStyle = 'rgba(255,255,255,.28)'; c.lineWidth = 1;
+  c.strokeRect(1, 1, w-2, h-2);
+  // Mission locations.
+  if (mission.pickup) {
+    c.fillStyle = '#facc15'; c.beginPath(); c.arc(worldToMapX(mission.pickup.x), worldToMapY(mission.pickup.z), 7, 0, Math.PI*2); c.fill();
+  }
+  if (mission.drop) {
+    c.fillStyle = '#4ade80'; c.beginPath(); c.arc(worldToMapX(mission.drop.x), worldToMapY(mission.drop.z), 7, 0, Math.PI*2); c.fill();
+  }
+  // Parked and traffic vehicles as small neutral marks.
+  c.fillStyle = 'rgba(255,255,255,.55)';
+  for (const rec of parkedRecs) {
+    c.fillRect(worldToMapX(rec.x)-1.5, worldToMapY(rec.z)-1.5, 3, 3);
+  }
+  // Your active vehicle and player position.
+  c.fillStyle = '#facc15';
+  c.beginPath(); c.arc(worldToMapX(car.x), worldToMapY(car.z), 5, 0, Math.PI*2); c.fill();
+  c.fillStyle = '#38bdf8';
+  c.beginPath(); c.arc(worldToMapX(pos.x), worldToMapY(pos.z), 5, 0, Math.PI*2); c.fill();
+}
+function setMapOpen(open) {
+  mapOpen = open;
+  mapOverlay.style.display = open ? 'grid' : 'none';
+  if (open) drawCityMap();
+}
+document.getElementById('mapBtn').addEventListener('click', () => setMapOpen(!mapOpen));
+document.getElementById('closeMap').addEventListener('click', () => setMapOpen(false));
+mapOverlay.addEventListener('click', e => { if (e.target === mapOverlay) setMapOpen(false); });
+addEventListener('keydown', e => { if (e.code === 'Escape' && mapOpen) setMapOpen(false); });
 
 // ---------- Game systems: missions, money, wanted level, police ----------
 let money = 0;
@@ -2315,6 +2462,10 @@ function loop(timestamp = 0) {
   updateGulls(dt);
   updateGame(dt);
   updateEngine();
+  if (mapOpen) {
+    mapDrawTimer += dt;
+    if (mapDrawTimer >= 0.25) { drawCityMap(); mapDrawTimer = 0; }
+  }
   updateCamera(dt);
   updateHud();
   renderer.render(scene, camera);
