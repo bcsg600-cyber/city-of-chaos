@@ -491,6 +491,9 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
         }
         const polish = material => {
           if (!material) return material;
+          // Some exported vehicle materials arrive hidden; restore them while
+          // keeping their original opacity, maps, and surface properties.
+          material.visible = true;
           material.side = THREE.DoubleSide;
           material.needsUpdate = true;
           return material;
