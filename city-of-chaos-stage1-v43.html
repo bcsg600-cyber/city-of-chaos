@@ -66,6 +66,12 @@
   #startGameBtn { width:100%; border:0; border-radius:13px; padding:16px 20px; color:#06251b;
     background:#34d399; font:900 18px system-ui,sans-serif; cursor:pointer; }
   #homeHints { margin-top:18px; color:#cbd5e1; font:13px/1.7 system-ui,sans-serif; }
+  #pauseBtn { position:fixed; top:145px; right:12px; z-index:12; border:1px solid rgba(255,255,255,.45); border-radius:10px; padding:10px 14px; color:white; background:rgba(15,23,42,.82); font:700 14px system-ui,sans-serif; touch-action:manipulation; }
+  #pauseOverlay { position:fixed; inset:0; z-index:40; display:none; place-items:center; padding:20px; box-sizing:border-box; background:rgba(2,6,23,.82); color:white; text-align:center; }
+  #pausePanel { width:min(92vw,440px); padding:26px; border:1px solid rgba(255,255,255,.2); border-radius:18px; background:rgba(15,23,42,.96); box-shadow:0 20px 70px rgba(0,0,0,.5); }
+  #pausePanel h2 { margin:0 0 8px; font:900 30px system-ui,sans-serif; }
+  #pausePanel p { color:#cbd5e1; line-height:1.5; }
+  #pausePanel button { width:100%; margin-top:10px; padding:13px; border:0; border-radius:10px; background:#34d399; color:#06251b; font:800 15px system-ui,sans-serif; }
   #carControls {
     position:fixed; right:16px; bottom:16px; z-index:9;
     display:none; grid-template-columns:repeat(3,68px); grid-template-rows:repeat(2,62px);
@@ -95,6 +101,10 @@
     <button id="startGameBtn" type="button">PLAY GAME</button>
     <div id="homeHints">WASD / arrows to move · Shift to sprint · Space to jump<br>E to enter or exit cars · Open MAP to see the whole city</div>
   </div>
+</div>
+<button id="pauseBtn" type="button">PAUSE</button>
+<div id="pauseOverlay" role="dialog" aria-modal="true" aria-label="Paused">
+  <div id="pausePanel"><h2>PAUSED</h2><p>Take a break or check your city map.</p><button id="resumeBtn" type="button">RESUME GAME</button><button id="pauseMapBtn" type="button">OPEN CITY MAP</button></div>
 </div>
 <div id="hud">
   <b>CITY OF CHAOS</b> &middot; Stage 1<br>
@@ -1243,6 +1253,7 @@ let walkT = 0;
 let timeOfDay = 10;
 let elapsed = 0;
 let gameStarted = false;
+let gamePaused = false;
 let inCar = false;
 let knockX = 0;
 let knockZ = 0;
@@ -2653,6 +2664,26 @@ function startGame() {
   clock.getDelta(); // discard menu time so the first gameplay frame has a small delta
 }
 document.getElementById('startGameBtn').addEventListener('click', startGame);
+const pauseOverlay = document.getElementById('pauseOverlay');
+function setPaused(paused) {
+  if (!gameStarted) return;
+  gamePaused = paused;
+  pauseOverlay.style.display = paused ? 'grid' : 'none';
+  document.getElementById('pauseBtn').textContent = paused ? 'PAUSED' : 'PAUSE';
+  for (const k in keys) keys[k] = false;
+  stickVec.x = 0; stickVec.y = 0;
+  knob.style.transform = 'translate(0px, 0px)';
+}
+document.getElementById('pauseBtn').addEventListener('click', () => setPaused(!gamePaused));
+document.getElementById('resumeBtn').addEventListener('click', () => setPaused(false));
+document.getElementById('pauseMapBtn').addEventListener('click', () => { setPaused(false); setMapOpen(true); });
+addEventListener('keydown', e => {
+  if ((e.code === 'Escape' || e.code === 'KeyP') && gameStarted) {
+    if (mapOpen) return;
+    e.preventDefault();
+    setPaused(!gamePaused);
+  }
+});
 function loop(timestamp = 0) {
   // Limit low-power touch devices to a stable 30 FPS instead of rendering
   // needlessly at 60-120 FPS while the scene is already GPU-bound.
@@ -2662,15 +2693,15 @@ function loop(timestamp = 0) {
   }
   lastMobileFrame = timestamp;
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (gameStarted) elapsed += dt;
-  if (gameStarted && seq) updateSeq(dt);
-  else if (gameStarted && inCar) updateCar(dt);
-  else if (gameStarted) updateOnFoot(dt);
-  if (gameStarted) updateFallenStreetLamps(dt);
-  if (gameStarted && playerModelMixer) {
+  if (gameStarted && !gamePaused) elapsed += dt;
+  if (gameStarted && !gamePaused && seq) updateSeq(dt);
+  else if (gameStarted && !gamePaused && inCar) updateCar(dt);
+  else if (gameStarted && !gamePaused) updateOnFoot(dt);
+  if (gameStarted && !gamePaused) updateFallenStreetLamps(dt);
+  if (gameStarted && !gamePaused && playerModelMixer) {
     playerModelMixer.update(dt);
   }
-  if (gameStarted) {
+  if (gameStarted && !gamePaused) {
     updateImportedCharacterAnimation(dt);
     updateEnvironment(dt);
     updateTraffic(dt);
@@ -2683,7 +2714,7 @@ function loop(timestamp = 0) {
     mapDrawTimer += dt;
     if (mapDrawTimer >= 0.25) { drawCityMap(); mapDrawTimer = 0; }
   }
-  if (gameStarted) {
+  if (gameStarted && !gamePaused) {
     updateCamera(dt);
     updateHud();
   }
