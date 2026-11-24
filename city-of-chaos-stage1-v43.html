@@ -1052,12 +1052,31 @@ scene.add(avatar);
 let playerModel = null;
 let playerModelMixer = null;
 let playerAnimationActions = {};
+let importedSeatBones = [];
+function setImportedSeatPose(enabled) {
+  for (const item of importedSeatBones) {
+    item.bone.rotation.copy(item.base);
+    if (enabled) item.bone.rotation.x += item.offset;
+  }
+}
 let desiredPlayerAnimation = 'idle';
 let activePlayerAction = null;
 const characterLoader = new GLTFLoader();
 characterLoader.load('./indian_man_in_suit.glb', gltf => {
   playerModel = gltf.scene;
   playerModel.name = 'indian-man-in-suit-player';
+  // Build a restrained seated pose from the model's own leg bones. Arms and
+  // hands are deliberately left untouched to avoid the earlier distorted pose.
+  importedSeatBones = [];
+  playerModel.traverse(o => {
+    if (!o.isBone) return;
+    const n = (o.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (/(left|right)(upleg|thigh)$/.test(n)) {
+      importedSeatBones.push({ bone: o, base: o.rotation.clone(), offset: -1.15 });
+    } else if (/(left|right)(leg|calf)$/.test(n)) {
+      importedSeatBones.push({ bone: o, base: o.rotation.clone(), offset: 1.35 });
+    }
+  });
   playerModel.traverse(o => {
     if (o.isMesh) {
       o.castShadow = true;
@@ -1600,7 +1619,18 @@ function startEnter(veh, rec, x, z, h) {
     const idx = colliders.indexOf(redCollider);
     if (idx >= 0) colliders.splice(idx, 1);
   }
-  seq = { type: 'enter', t: 0, dur: 1.6, veh, rec, x, z, h, startX: pos.x, startZ: pos.z };
+  // Walk to the driver's door first. The local left side of the vehicle is
+  // transformed by its heading so this works for parked cars in either lane.
+  const sideX = -Math.cos(h), sideZ = Math.sin(h);
+  const approachX = x + sideX * 2.35;
+  const approachZ = z + sideZ * 2.35;
+  const distance = Math.hypot(approachX - pos.x, approachZ - pos.z);
+  const approachDur = clamp(distance / 4.2, 0, 4.5);
+  seq = {
+    type: 'enter', t: 0, approachDur, dur: approachDur + 1.6,
+    veh, rec, x, z, h, startX: pos.x, startZ: pos.z,
+    approachX, approachZ
+  };
 }
 
 function finishEnter() {
@@ -1622,6 +1652,7 @@ function finishEnter() {
 }
 
 function finishExit() {
+  setImportedSeatPose(false);
   if (activeVeh === redVeh) {
     redRec.x = car.x;
     redRec.z = car.z;
@@ -1669,17 +1700,45 @@ function updateSeq(dt) {
   const door = seq.veh.door;
   const importedDoor = door && door.userData ? door.userData.importedDoor : null;
   if (seq.type === 'enter') {
-    const open = tt < 0.5 ? ease(tt / 0.5) : tt > 1.1 ? 1 - ease(Math.min(1, (tt - 1.1) / 0.5)) : 1;
-    door.rotation.y = -1.0 * open;
-    if (importedDoor) importedDoor.rotation.y = -1.0 * open;
-    const seat = seatPos(seq.x, seq.z, seq.h);
-    const k = ease(Math.min(1, Math.max(0, (tt - 0.5) / 0.6)));
-    avatar.position.set(lerpN(seq.startX, seat.x, k), lerpN(0, -0.42, k), lerpN(seq.startZ, seat.z, k));
-    avatar.rotation.y = seq.h;
-    if (tt < 0.5) { poseIdle(player); setPlayerModelAnimation('idle'); }
-    else if (tt < 1.1) { poseWalk(player, Math.sin(tt * 12) * 0.6); setPlayerModelAnimation('enter'); }
-    else { poseSeated(player); setPlayerModelAnimation('sit'); }
-    if (tt >= seq.dur) { door.rotation.y = 0; if (importedDoor) importedDoor.rotation.y = 0; finishEnter(); }
+    const approachT = seq.approachDur;
+    if (tt < approachT) {
+      const k = ease(tt / Math.max(approachT, 0.001));
+      avatar.position.set(
+        lerpN(seq.startX, seq.approachX, k), 0,
+        lerpN(seq.startZ, seq.approachZ, k)
+      );
+      // Face the car while approaching the driver's door.
+      avatar.rotation.y = Math.atan2(seq.x - avatar.position.x, seq.z - avatar.position.z);
+      poseWalk(player, Math.sin(tt * 10) * 0.6);
+      setPlayerModelAnimation('walk');
+      setImportedSeatPose(false);
+    } else {
+      const enterT = tt - approachT;
+      const open = enterT < 0.45 ? ease(enterT / 0.45) : enterT > 1.05 ? 1 - ease(Math.min(1, (enterT - 1.05) / 0.45)) : 1;
+      door.rotation.y = -1.0 * open;
+      if (importedDoor) importedDoor.rotation.y = -1.0 * open;
+      const seat = seatPos(seq.x, seq.z, seq.h);
+      const k = ease(Math.min(1, Math.max(0, (enterT - 0.45) / 0.6)));
+      avatar.position.set(
+        lerpN(seq.approachX, seat.x, k),
+        lerpN(0, -0.42, k),
+        lerpN(seq.approachZ, seat.z, k)
+      );
+      avatar.rotation.y = seq.h;
+      if (enterT < 0.45) { poseIdle(player); setPlayerModelAnimation('idle'); }
+      else if (enterT < 1.05) { poseWalk(player, Math.sin(enterT * 12) * 0.6); setPlayerModelAnimation('walk'); }
+      else {
+        poseSeated(player);
+        setPlayerModelAnimation('sit');
+        setImportedSeatPose(true);
+      }
+    }
+    if (tt >= seq.dur) {
+      door.rotation.y = 0;
+      if (importedDoor) importedDoor.rotation.y = 0;
+      setImportedSeatPose(true);
+      finishEnter();
+    }
   } else {
     const open = tt < 0.4 ? ease(tt / 0.4) : tt > 1.0 ? 1 - ease(Math.min(1, (tt - 1.0) / 0.4)) : 1;
     door.rotation.y = -1.0 * open;
@@ -1688,9 +1747,15 @@ function updateSeq(dt) {
     const k = ease(Math.min(1, Math.max(0, (tt - 0.4) / 0.5)));
     avatar.position.set(lerpN(seq.startX, exitX, k), lerpN(-0.42, 0, k), lerpN(seq.startZ, exitZ, k));
     avatar.rotation.y = seq.h;
-    if (tt < 0.4) { poseSeated(player); setPlayerModelAnimation('sit'); }
-    else if (tt < 0.9) { poseWalk(player, Math.sin(tt * 12) * 0.6); setPlayerModelAnimation('exit'); }
-    else { poseIdle(player); setPlayerModelAnimation('idle'); }
+    if (tt < 0.4) {
+      poseSeated(player); setPlayerModelAnimation('sit'); setImportedSeatPose(true);
+    } else if (tt < 0.9) {
+      setImportedSeatPose(false);
+      poseWalk(player, Math.sin(tt * 12) * 0.6); setPlayerModelAnimation('walk');
+    } else {
+      setImportedSeatPose(false);
+      poseIdle(player); setPlayerModelAnimation('idle');
+    }
     if (tt >= seq.dur) { door.rotation.y = 0; if (importedDoor) importedDoor.rotation.y = 0; finishExit(); }
   }
 }
@@ -1938,6 +2003,7 @@ function updateCar(dt) {
   avatar.position.set(seatHere.x, -0.42, seatHere.z);
   avatar.rotation.y = car.h;
   poseSeated(player);
+  setImportedSeatPose(true);
 }
 
 // ---------- Environment ----------
