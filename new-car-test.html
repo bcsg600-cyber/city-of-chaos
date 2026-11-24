@@ -14,11 +14,15 @@ button{background:#26364b;color:white;border:1px solid #52677f;border-radius:8px
 <body><div id="view"></div>
 <div id="panel"><div id="title">New Car — GLB Preview</div><div id="status">Starting 3D renderer…</div><div id="controls"><button id="reset">Reset view</button><button id="bright">Show visible materials</button></div></div>
 <div id="hint">Drag to rotate · Pinch or scroll to zoom</div>
+<script>
+window.addEventListener('error',e=>{const s=document.querySelector('#status');if(s)s.textContent='JavaScript error: '+(e.message||'module failed to start')+' · '+(e.filename||'')+':'+(e.lineno||'');});
+window.addEventListener('unhandledrejection',e=>{const s=document.querySelector('#status');if(s)s.textContent='Loading error: '+(e.reason?.message||String(e.reason||'unknown error'));});
+</script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-import {OrbitControls} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 const status=document.querySelector('#status');
 const scene=new THREE.Scene(); scene.background=new THREE.Color(0x171d27);
 const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.01,2000);
