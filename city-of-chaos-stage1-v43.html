@@ -418,11 +418,34 @@ function addSharedSUV(group) {
     bounds.getSize(size);
     bounds.getCenter(center);
     const longestHorizontal = Math.max(size.x, size.z, 0.001);
-    const scale = 5.0 / longestHorizontal;
+    const scale = 5.8 / longestHorizontal;
     model.scale.setScalar(scale);
     model.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
     model.updateMatrixWorld(true);
-    group.add(model);
+
+    // The supplied SUV asset is rendering as only one side in the game.
+    // Mirror a second copy across the vehicle's centerline to complete the body.
+    // If the source already contains both sides, the mirrored copy aligns with it.
+    const mirroredHalf = model.clone(true);
+    mirroredHalf.name = 'shared-papercar-suv-mirrored-side';
+    mirroredHalf.scale.x *= -1;
+    mirroredHalf.position.x *= -1;
+    mirroredHalf.traverse(o => {
+      if (!o.isMesh) return;
+      o.frustumCulled = false;
+      o.castShadow = true;
+      o.receiveShadow = true;
+      if (o.material) {
+        const polish = m => {
+          const copy = m.clone();
+          copy.side = THREE.DoubleSide;
+          copy.needsUpdate = true;
+          return copy;
+        };
+        o.material = Array.isArray(o.material) ? o.material.map(polish) : polish(o.material);
+      }
+    });
+    group.add(model, mirroredHalf);
   };
   if (sharedSUVTemplate) {
     attach(sharedSUVTemplate);
@@ -983,7 +1006,7 @@ characterLoader.load('./indian_man_in_suit.glb', gltf => {
   const center = new THREE.Vector3();
   bounds.getSize(size);
   bounds.getCenter(center);
-  const targetHeight = 2.2; // slightly taller so the player reads at normal human scale beside vehicles
+  const targetHeight = 2.8; // larger player model for clearer visibility in the city
   const scale = targetHeight / Math.max(size.y, 0.001);
   playerModel.scale.setScalar(scale);
   playerModel.position.x = -center.x * scale;
