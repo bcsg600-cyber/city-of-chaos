@@ -1011,25 +1011,9 @@ characterLoader.load('./indian_man_in_suit.glb', gltf => {
   avatar.add(playerModel);
 
   playerModelMixer = new THREE.AnimationMixer(playerModel);
-  // Build a small procedural rig as a reliable fallback for Mixamo clips whose
-  // FBX bone paths do not exactly match the GLB skeleton's node names.
-  const bones = {};
-  playerModel.traverse(o => {
-    if (!o.isBone) return;
-    const n = (o.name || '').toLowerCase().replace(/^mixamorig/, '').replace(/[^a-z0-9]/g, '');
-    if (n.includes('leftupleg') || n === 'leftthigh') bones.leftThigh = o;
-    else if (n.includes('rightupleg') || n === 'rightthigh') bones.rightThigh = o;
-    else if (n.includes('leftleg') && !n.includes('upleg')) bones.leftShin = o;
-    else if (n.includes('rightleg') && !n.includes('upleg')) bones.rightShin = o;
-    else if (n.includes('leftarm') && !n.includes('forearm')) bones.leftArm = o;
-    else if (n.includes('rightarm') && !n.includes('forearm')) bones.rightArm = o;
-    else if (n.includes('leftforearm')) bones.leftForearm = o;
-    else if (n.includes('rightforearm')) bones.rightForearm = o;
-    else if (n === 'hips' || n === 'pelvis') bones.hips = o;
-  });
-  const bases = {};
-  for (const [key, bone] of Object.entries(bones)) bases[key] = bone.rotation.clone();
-  playerBoneRig = { bones, bases };
+  // Bind clips that may have finished downloading before the GLB character.
+  // Without this call, those clips remain queued forever and the character never animates.
+  bindPendingPlayerClips();
   playPlayerAnimation(desiredPlayerAnimation);
 }, undefined, error => {
   console.error('Could not load indian_man_in_suit.glb; showing fallback character.', error);
@@ -1065,15 +1049,8 @@ function setPlayerModelAnimation(kind) {
 }
 
 function updateImportedCharacterAnimation(dt) {
-  // The AnimationMixer owns animated bones. Do not reset or procedurally rotate
-  // them after mixer.update(), which was overriding the real FBX animation.
-  if (!playerBoneRig || activePlayerAction) return;
-  const { bones, bases } = playerBoneRig;
-  // Relax the default T-pose slightly while idle; leave the mixer free to animate
-  // the full run and jump clips whenever those actions are active.
-  for (const [key, bone] of Object.entries(bones)) bone.rotation.copy(bases[key]);
-  if (bones.leftArm) bones.leftArm.rotation.z += 0.72;
-  if (bones.rightArm) bones.rightArm.rotation.z -= 0.72;
+  // AnimationMixer exclusively controls the imported skeleton. Avoid guessed
+  // shoulder/wrist rotations: they distort the hands and create the stiff pose.
 }
 
 // The FBX clips were exported for this character. Only their animation tracks are
@@ -1105,7 +1082,7 @@ function loadPlayerAnimation(url, key) {
 }
 const pendingPlayerClips = {};
 loadPlayerAnimation('./indian-man-in-suit@Running.fbx', 'run');
-loadPlayerAnimation('./indian-man-in-suit@Standing Jump 2.fbx', 'jump');
+loadPlayerAnimation('./indian-man-in-suit@Standing Jump.fbx', 'jump');
 
 // Once the GLB mixer exists, bind any animation clips that finished loading first.
 function bindPendingPlayerClips() {
