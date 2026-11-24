@@ -409,15 +409,19 @@ function addSharedSUV(group) {
       };
       o.material = Array.isArray(o.material) ? o.material.map(polish) : polish(o.material);
     });
+    // Normalize the imported model using its full world-space bounds before
+    // attaching it, so nested GLB transforms cannot leave the vehicle offset.
+    model.updateMatrixWorld(true);
     const bounds = new THREE.Box3().setFromObject(model);
     const size = new THREE.Vector3();
     const center = new THREE.Vector3();
     bounds.getSize(size);
     bounds.getCenter(center);
     const longestHorizontal = Math.max(size.x, size.z, 0.001);
-    const scale = 4.3 / longestHorizontal;
+    const scale = 5.0 / longestHorizontal;
     model.scale.setScalar(scale);
     model.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
+    model.updateMatrixWorld(true);
     group.add(model);
   };
   if (sharedSUVTemplate) {
@@ -979,7 +983,7 @@ characterLoader.load('./indian_man_in_suit.glb', gltf => {
   const center = new THREE.Vector3();
   bounds.getSize(size);
   bounds.getCenter(center);
-  const targetHeight = 1.8;
+  const targetHeight = 2.2; // slightly taller so the player reads at normal human scale beside vehicles
   const scale = targetHeight / Math.max(size.y, 0.001);
   playerModel.scale.setScalar(scale);
   playerModel.position.x = -center.x * scale;
