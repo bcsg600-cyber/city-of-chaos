@@ -66,6 +66,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -1100,16 +1101,120 @@ function poseHitting(r, p) {
 
 // ---------- Player ----------
 const player = buildHuman({ skin: 0xe8b996, hair: 0x5a3a22, top: 0x7d9cc9, bottom: 0xe2e4e6, shoes: 0x6b3e22, eye: 0x4a3a2a, longSleeves: true });
-const avatar = player.group;
-avatar.visible = true;
+
+// Keep a stable avatar root so movement, camera, and vehicle interactions do not change.
+const avatar = new THREE.Group();
+avatar.name = 'player-avatar-root';
+avatar.add(player.group);
+player.group.visible = false; // retained as a fallback, but the imported character is the visible player
 scene.add(avatar);
 
-// The player uses one dependable procedural rig built by buildHuman().
-// Do not load a second GLB/FBX skeleton here: those assets used a different
-// bone hierarchy and previously caused the visible character to remain frozen.
+let playerModel = null;
+let playerModelMixer = null;
+let playerAnimationActions = {};
 let desiredPlayerAnimation = 'idle';
+let activePlayerAction = null;
+const characterLoader = new GLTFLoader();
+characterLoader.load('./indian_man_in_suit.glb', gltf => {
+  playerModel = gltf.scene;
+  playerModel.name = 'indian-man-in-suit-player';
+  playerModel.traverse(o => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+      if (o.material) {
+        const polish = m => {
+          const copy = m.clone();
+          copy.needsUpdate = true;
+          return copy;
+        };
+        o.material = Array.isArray(o.material) ? o.material.map(polish) : polish(o.material);
+      }
+    }
+  });
+
+  // Fit the supplied model to the existing character height and place its feet at ground level.
+  const bounds = new THREE.Box3().setFromObject(playerModel);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  bounds.getSize(size);
+  bounds.getCenter(center);
+  const targetHeight = 1.8;
+  const scale = targetHeight / Math.max(size.y, 0.001);
+  playerModel.scale.setScalar(scale);
+  playerModel.position.x = -center.x * scale;
+  playerModel.position.z = -center.z * scale;
+  playerModel.position.y = -bounds.min.y * scale;
+  avatar.add(playerModel);
+
+  playerModelMixer = new THREE.AnimationMixer(playerModel);
+  playPlayerAnimation(desiredPlayerAnimation);
+}, undefined, error => {
+  console.error('Could not load indian_man_in_suit.glb; showing fallback character.', error);
+  player.group.visible = true;
+});
+
+function playPlayerAnimation(kind) {
+  if (!playerModelMixer) return;
+  const key = kind === 'run' ? 'run' : kind === 'jump' ? 'jump' : kind === 'walk' ? 'walk' : 'idle';
+  const action = playerAnimationActions[key];
+  if (!action) return; // keep the current pose until the requested clip is ready
+  if (activePlayerAction === action) return;
+  action.reset();
+  action.enabled = true;
+  action.setEffectiveWeight(1);
+  action.setEffectiveTimeScale(key === 'walk' ? 0.62 : 1);
+  action.fadeIn(0.18);
+  if (activePlayerAction) activePlayerAction.fadeOut(0.18);
+  action.play();
+  activePlayerAction = action;
+}
+
 function setPlayerModelAnimation(kind) {
   desiredPlayerAnimation = kind;
+  playPlayerAnimation(kind);
+}
+
+// The FBX clips were exported for this character. Only their animation tracks are
+// used; the FBX mesh itself is discarded. Relative paths keep the assets portable
+// when this repository is opened by another coding assistant or browser host.
+const characterAnimationLoader = new FBXLoader();
+function loadPlayerAnimation(url, key) {
+  characterAnimationLoader.load(url, fbx => {
+    const clip = fbx.animations && fbx.animations[0];
+    if (!clip) {
+      console.warn('No animation clip found in', url);
+      return;
+    }
+    const action = playerModelMixer ? playerModelMixer.clipAction(clip) : null;
+    if (!action) {
+      // GLB may still be loading; retain the clip and create its action afterwards.
+      pendingPlayerClips[key] = clip;
+      return;
+    }
+    playerAnimationActions[key] = action;
+    if (desiredPlayerAnimation === key || (key === 'run' && desiredPlayerAnimation === 'walk')) playPlayerAnimation(desiredPlayerAnimation);
+    fbx.traverse(o => {
+      if (o.isMesh) {
+        o.geometry?.dispose();
+        const materials = Array.isArray(o.material) ? o.material : [o.material];
+        materials.forEach(m => m?.dispose());
+      }
+    });
+  }, undefined, error => console.error('Could not load character animation:', url, error));
+}
+const pendingPlayerClips = {};
+loadPlayerAnimation('./indian-man-in-suit@Running.fbx', 'run');
+loadPlayerAnimation('./indian-man-in-suit@Standing Jump.fbx', 'jump');
+
+// Once the GLB mixer exists, bind any animation clips that finished loading first.
+function bindPendingPlayerClips() {
+  if (!playerModelMixer) return;
+  for (const [key, clip] of Object.entries(pendingPlayerClips)) {
+    playerAnimationActions[key] = playerModelMixer.clipAction(clip);
+    delete pendingPlayerClips[key];
+  }
+  playPlayerAnimation(desiredPlayerAnimation);
 }
 
 const pos = new THREE.Vector3(0, 0, 60);
@@ -2308,6 +2413,10 @@ function loop() {
   if (seq) updateSeq(dt);
   else if (inCar) updateCar(dt);
   else updateOnFoot(dt);
+  if (playerModelMixer) {
+    bindPendingPlayerClips();
+    playerModelMixer.update(dt);
+  }
   updateEnvironment(dt);
   updateTraffic(dt);
   updateWalkers(dt);
