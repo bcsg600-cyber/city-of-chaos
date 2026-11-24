@@ -1156,14 +1156,21 @@ characterLoader.load('./indian_man_in_suit.glb', gltf => {
 
 function playPlayerAnimation(kind) {
   if (!playerModelMixer) return;
-  const key = kind === 'run' ? 'run' : kind === 'jump' ? 'jump' : kind === 'walk' ? 'walk' : 'idle';
+  if (kind === 'idle' || kind === 'enter' || kind === 'exit' || kind === 'sit') {
+    if (activePlayerAction) {
+      activePlayerAction.fadeOut(0.18);
+      activePlayerAction = null;
+    }
+    return; // the model's neutral rig pose is used when standing still
+  }
+  const key = kind === 'jump' ? 'jump' : 'run';
   const action = playerAnimationActions[key];
-  if (!action) return; // keep the current pose until the requested clip is ready
+  if (!action) return; // wait until the matching clip has loaded
+  action.setEffectiveTimeScale(kind === 'walk' ? 0.62 : 1);
   if (activePlayerAction === action) return;
   action.reset();
   action.enabled = true;
   action.setEffectiveWeight(1);
-  action.setEffectiveTimeScale(key === 'walk' ? 0.62 : 1);
   action.fadeIn(0.18);
   if (activePlayerAction) activePlayerAction.fadeOut(0.18);
   action.play();
@@ -1186,14 +1193,7 @@ function loadPlayerAnimation(url, key) {
       console.warn('No animation clip found in', url);
       return;
     }
-    const action = playerModelMixer ? playerModelMixer.clipAction(clip) : null;
-    if (!action) {
-      // GLB may still be loading; retain the clip and create its action afterwards.
-      pendingPlayerClips[key] = clip;
-      return;
-    }
-    playerAnimationActions[key] = action;
-    if (desiredPlayerAnimation === key || (key === 'run' && desiredPlayerAnimation === 'walk')) playPlayerAnimation(desiredPlayerAnimation);
+    // The FBX is only an animation source; discard its duplicate character meshes.
     fbx.traverse(o => {
       if (o.isMesh) {
         o.geometry?.dispose();
@@ -1201,6 +1201,12 @@ function loadPlayerAnimation(url, key) {
         materials.forEach(m => m?.dispose());
       }
     });
+    if (!playerModelMixer) {
+      pendingPlayerClips[key] = clip;
+      return;
+    }
+    playerAnimationActions[key] = playerModelMixer.clipAction(clip);
+    if (desiredPlayerAnimation === key || (key === 'run' && (desiredPlayerAnimation === 'walk' || desiredPlayerAnimation === 'run'))) playPlayerAnimation(desiredPlayerAnimation);
   }, undefined, error => console.error('Could not load character animation:', url, error));
 }
 const pendingPlayerClips = {};
