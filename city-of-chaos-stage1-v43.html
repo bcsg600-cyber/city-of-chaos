@@ -397,14 +397,26 @@ const tlBoxGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
 const redLight = new THREE.MeshStandardMaterial({ color: 0x881111, emissive: 0xff2020, emissiveIntensity: 1.2 });
 const greenLight = new THREE.MeshStandardMaterial({ color: 0x114411, emissive: 0x20ff40, emissiveIntensity: 1.2 });
 const trafficLights = [];
+const destructibleStreetLamps = [];
+const fallenStreetLamps = [];
 
 for (const rx of ROADS) {
   for (const rz of ROADS) {
     const lamp = new THREE.Group();
-    lamp.add(new THREE.Mesh(poleGeo, poleMat), new THREE.Mesh(headGeo, lampMat));
-    lamp.position.set(rx + 6.8, 0, rz + 6.8);
+    const lampPoleMat = poleMat.clone();
+    const lampHeadMat = lampMat.clone();
+    lampPoleMat.transparent = true;
+    lampHeadMat.transparent = true;
+    const lampPole = new THREE.Mesh(poleGeo, lampPoleMat);
+    const lampHead = new THREE.Mesh(headGeo, lampHeadMat);
+    lamp.add(lampPole, lampHead);
+    const lampX = rx + 6.8;
+    const lampZ = rz + 6.8;
+    lamp.position.set(lampX, 0, lampZ);
     scene.add(lamp);
-    colliders.push({ minX: rx + 6.8 - 0.25, maxX: rx + 6.8 + 0.25, minZ: rz + 6.8 - 0.25, maxZ: rz + 6.8 + 0.25 });
+    const lampCollider = { minX: lampX - 0.25, maxX: lampX + 0.25, minZ: lampZ - 0.25, maxZ: lampZ + 0.25 };
+    colliders.push(lampCollider);
+    destructibleStreetLamps.push({ group: lamp, collider: lampCollider, x: lampX, z: lampZ, falling: false });
 
     const tx = rx - 6.8;
     const tz = rz - 6.8;
@@ -1537,6 +1549,56 @@ function carBlocked(x, z, h) {
   return false;
 }
 
+// A car impact knocks a street lamp over, removes its solid collider, then fades it away.
+function knockDownStreetLamp(x, z, h) {
+  const fx = Math.sin(h), fz = Math.cos(h);
+  const rx = Math.cos(h), rz = -Math.sin(h);
+  for (const lamp of destructibleStreetLamps) {
+    if (lamp.falling) continue;
+    let hit = false;
+    for (const f of [-2.0, 0, 2.0]) {
+      for (const side of [-0.9, 0.9]) {
+        const px = x + fx * f + rx * side;
+        const pz = z + fz * f + rz * side;
+        if (px + 0.15 > lamp.collider.minX && px - 0.15 < lamp.collider.maxX &&
+            pz + 0.15 > lamp.collider.minZ && pz - 0.15 < lamp.collider.maxZ) hit = true;
+      }
+    }
+    if (!hit) continue;
+    lamp.falling = true;
+    lamp.t = 0;
+    lamp.leanX = lamp.x - x;
+    lamp.leanZ = lamp.z - z;
+    const length = Math.hypot(lamp.leanX, lamp.leanZ) || 1;
+    lamp.leanX /= length;
+    lamp.leanZ /= length;
+    const colliderIndex = colliders.indexOf(lamp.collider);
+    if (colliderIndex >= 0) colliders.splice(colliderIndex, 1);
+    fallenStreetLamps.push(lamp);
+  }
+}
+
+function updateFallenStreetLamps(dt) {
+  for (let i = fallenStreetLamps.length - 1; i >= 0; i--) {
+    const lamp = fallenStreetLamps[i];
+    lamp.t += dt;
+    const fall = Math.min(1, lamp.t / 0.75);
+    const easedFall = fall * fall * (3 - 2 * fall);
+    const angle = 1.48 * easedFall;
+    lamp.group.rotation.x = -lamp.leanZ * angle;
+    lamp.group.rotation.z = lamp.leanX * angle;
+    if (lamp.t > 1.8) {
+      const opacity = Math.max(0, 1 - (lamp.t - 1.8) / 0.9);
+      for (const child of lamp.group.children) child.material.opacity = opacity;
+    }
+    if (lamp.t >= 2.7) {
+      scene.remove(lamp.group);
+      for (const child of lamp.group.children) child.material.dispose();
+      fallenStreetLamps.splice(i, 1);
+    }
+  }
+}
+
 // Nearest open spot for the car
 function carFreeSpot() {
   if (!carBlocked(car.x, car.z, car.h)) return null;
@@ -1991,6 +2053,7 @@ function updateCar(dt) {
 
   const nx = car.x + Math.sin(car.h) * car.speed * dt;
   const nz = car.z + Math.cos(car.h) * car.speed * dt;
+  knockDownStreetLamp(nx, nz, car.h);
   if (!carBlocked(nx, nz, car.h)) {
     car.x = nx;
     car.z = nz;
@@ -2603,6 +2666,7 @@ function loop(timestamp = 0) {
   if (gameStarted && seq) updateSeq(dt);
   else if (gameStarted && inCar) updateCar(dt);
   else if (gameStarted) updateOnFoot(dt);
+  if (gameStarted) updateFallenStreetLamps(dt);
   if (gameStarted && playerModelMixer) {
     playerModelMixer.update(dt);
   }
