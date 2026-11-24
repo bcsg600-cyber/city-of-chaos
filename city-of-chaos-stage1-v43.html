@@ -1022,17 +1022,21 @@ characterLoader.load('./indian_man_in_suit.glb', gltf => {
 
 function playPlayerAnimation(kind) {
   if (!playerModelMixer) return;
-  if (kind === 'idle' || kind === 'enter' || kind === 'exit' || kind === 'sit') {
+  // There is no punch/enter/exit clip in the supplied animation files. Do not
+  // accidentally play the running cycle for those states.
+  if (kind === 'idle' || kind === 'enter' || kind === 'exit' || kind === 'sit' || kind === 'punch') {
     if (activePlayerAction) {
       activePlayerAction.fadeOut(0.18);
       activePlayerAction = null;
     }
-    return; // the model's neutral rig pose is used when standing still
+    return; // use the model's neutral rig pose for these states
   }
   const key = kind === 'jump' ? 'jump' : 'run';
   const action = playerAnimationActions[key];
   if (!action) return; // wait until the matching clip has loaded
   action.setEffectiveTimeScale(kind === 'walk' ? 0.62 : 1);
+  action.setLoop(kind === 'jump' ? THREE.LoopOnce : THREE.LoopRepeat, kind === 'jump' ? 1 : Infinity);
+  action.clampWhenFinished = kind === 'jump';
   if (activePlayerAction === action) return;
   action.reset();
   action.enabled = true;
