@@ -1456,7 +1456,8 @@ for (const [id, key] of [['carLeft','CarLeft'],['carRight','CarRight'],['carGas'
   button.addEventListener('pointercancel', release);
   button.addEventListener('lostpointercapture', release);
 }
-useBtn.addEventListener('touchstart', e => { e.preventDefault(); toggleCar(); }, { passive: false });
+// Use click as the single activation path. Mobile Safari synthesizes a click
+// after touchstart; listening to both used to toggle enter/exit twice.
 useBtn.addEventListener('click', toggleCar);
 
 // ---------- Collision ----------
