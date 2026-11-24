@@ -35,7 +35,7 @@
   #jumpBtn { bottom: 24px; right: 120px; }
   #sprintBtn { bottom: 120px; right: 120px; }
   #mapBtn {
-    position: fixed; top: 12px; right: 12px; z-index: 12;
+    position: fixed; top: 92px; right: 12px; z-index: 12;
     border: 1px solid rgba(255,255,255,.45); border-radius: 10px;
     padding: 10px 14px; color: white; background: rgba(15,23,42,.82);
     font: 700 14px system-ui,sans-serif; touch-action: manipulation;
@@ -54,6 +54,18 @@
   #cityMap { display:block; width:100%; aspect-ratio:1; background:#263b32; border-radius:10px; }
   #mapLegend { display:flex; flex-wrap:wrap; gap:12px; margin-top:10px; color:#d1d5db; font-size:12px; }
   .mapDot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; }
+  #homeScreen {
+    position:fixed; inset:0; z-index:100; display:grid; place-items:center;
+    padding:22px; box-sizing:border-box; color:#fff; text-align:center;
+    background:linear-gradient(145deg,rgba(2,6,23,.96),rgba(15,23,42,.94) 55%,rgba(3,51,58,.94));
+  }
+  #homePanel { width:min(92vw,560px); padding:28px 22px; border:1px solid rgba(255,255,255,.2);
+    border-radius:22px; background:rgba(15,23,42,.72); box-shadow:0 24px 80px rgba(0,0,0,.4); }
+  #homeTitle { margin:0; font:900 clamp(32px,8vw,58px)/1 system-ui,sans-serif; letter-spacing:-2px; }
+  #homeSubtitle { margin:12px 0 22px; color:#cbd5e1; font:500 15px/1.5 system-ui,sans-serif; }
+  #startGameBtn { width:100%; border:0; border-radius:13px; padding:16px 20px; color:#06251b;
+    background:#34d399; font:900 18px system-ui,sans-serif; cursor:pointer; }
+  #homeHints { margin-top:18px; color:#cbd5e1; font:13px/1.7 system-ui,sans-serif; }
   #carControls {
     position:fixed; right:16px; bottom:16px; z-index:9;
     display:none; grid-template-columns:repeat(3,68px); grid-template-rows:repeat(2,62px);
@@ -76,6 +88,14 @@
 </style>
 </head>
 <body>
+<div id="homeScreen">
+  <div id="homePanel">
+    <h1 id="homeTitle">CITY OF CHAOS</h1>
+    <p id="homeSubtitle">Explore the city. Drive the streets. Complete missions.<br>Make the city yours.</p>
+    <button id="startGameBtn" type="button">PLAY GAME</button>
+    <div id="homeHints">WASD / arrows to move · Shift to sprint · Space to jump<br>E to enter or exit cars · Open MAP to see the whole city</div>
+  </div>
+</div>
 <div id="hud">
   <b>CITY OF CHAOS</b> &middot; Stage 1<br>
   <span id="zone">Downtown</span> &middot; <span id="clock">10:00</span><br>
@@ -1165,6 +1185,7 @@ let onGround = true;
 let walkT = 0;
 let timeOfDay = 10;
 let elapsed = 0;
+let gameStarted = false;
 let inCar = false;
 let knockX = 0;
 let knockZ = 0;
@@ -1882,7 +1903,8 @@ function updateCar(dt) {
 
 // ---------- Environment ----------
 function updateEnvironment(dt) {
-  timeOfDay = (timeOfDay + dt * 0.2) % 24;
+  // One full in-game day now lasts 10 real minutes instead of about 2.
+  timeOfDay = (timeOfDay + dt * 0.04) % 24;
   const a = (timeOfDay / 24) * Math.PI * 2 - Math.PI / 2;
   const elevation = Math.sin(a);
   sunDir.set(Math.cos(a), elevation, 0.4).normalize();
@@ -2438,6 +2460,13 @@ function updateEngine() {
 // ---------- Main loop ----------
 const clock = new THREE.Clock();
 let lastMobileFrame = 0;
+function startGame() {
+  if (gameStarted) return;
+  gameStarted = true;
+  document.getElementById('homeScreen').style.display = 'none';
+  clock.getDelta(); // discard menu time so the first gameplay frame has a small delta
+}
+document.getElementById('startGameBtn').addEventListener('click', startGame);
 function loop(timestamp = 0) {
   // Limit low-power touch devices to a stable 30 FPS instead of rendering
   // needlessly at 60-120 FPS while the scene is already GPU-bound.
@@ -2447,27 +2476,31 @@ function loop(timestamp = 0) {
   }
   lastMobileFrame = timestamp;
   const dt = Math.min(clock.getDelta(), 0.05);
-  elapsed += dt;
-  if (seq) updateSeq(dt);
-  else if (inCar) updateCar(dt);
-  else updateOnFoot(dt);
-  if (playerModelMixer) {
+  if (gameStarted) elapsed += dt;
+  if (gameStarted && seq) updateSeq(dt);
+  else if (gameStarted && inCar) updateCar(dt);
+  else if (gameStarted) updateOnFoot(dt);
+  if (gameStarted && playerModelMixer) {
     bindPendingPlayerClips();
     playerModelMixer.update(dt);
   }
-  updateImportedCharacterAnimation(dt);
-  updateEnvironment(dt);
-  updateTraffic(dt);
-  updateWalkers(dt);
-  updateGulls(dt);
-  updateGame(dt);
-  updateEngine();
-  if (mapOpen) {
+  if (gameStarted) {
+    updateImportedCharacterAnimation(dt);
+    updateEnvironment(dt);
+    updateTraffic(dt);
+    updateWalkers(dt);
+    updateGulls(dt);
+    updateGame(dt);
+    updateEngine();
+  }
+  if (gameStarted && mapOpen) {
     mapDrawTimer += dt;
     if (mapDrawTimer >= 0.25) { drawCityMap(); mapDrawTimer = 0; }
   }
-  updateCamera(dt);
-  updateHud();
+  if (gameStarted) {
+    updateCamera(dt);
+    updateHud();
+  }
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
