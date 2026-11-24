@@ -12,8 +12,9 @@ button{background:#26364b;color:white;border:1px solid #52677f;border-radius:8px
 </style>
 </head>
 <body><div id="view"></div>
-<div id="panel"><div id="title">New Car — GLB Preview</div><div id="status">Loading 2.glb…</div><div id="controls"><button id="reset">Reset view</button><button id="bright">Show visible materials</button></div></div>
+<div id="panel"><div id="title">New Car — GLB Preview</div><div id="status">Starting 3D renderer…</div><div id="controls"><button id="reset">Reset view</button><button id="bright">Show visible materials</button></div></div>
 <div id="hint">Drag to rotate · Pinch or scroll to zoom</div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
@@ -65,7 +66,7 @@ loader.load('./2.glb',g=>{
  applyMaterials();
  let meshes=0;car.traverse(o=>{if(o.isMesh)meshes++;});
  status.textContent='Loaded successfully · '+meshes+' mesh parts · '+Math.round(size.x*100)/100+' × '+Math.round(size.y*100)/100+' × '+Math.round(size.z*100)/100+' model units. Materials are brightened for visibility in this test.';
-},p=>{if(p.total)status.textContent='Loading '+Math.round(p.loaded/p.total*100)+'%…';},e=>{console.error(e);status.textContent='Could not load 2.glb: '+(e?.message||'unknown error');});
+},p=>{if(p.total)status.textContent='Loading '+Math.round(p.loaded/p.total*100)+'%…';},e=>{console.error(e);status.textContent='Could not load the car model: '+(e?.message||'unknown error');});
 document.querySelector('#reset').onclick=()=>{if(home){camera.position.copy(home.position);controls.target.copy(home.target);controls.update();}};
 document.querySelector('#bright').onclick=()=>{brightMode=!brightMode;applyMaterials();document.querySelector('#bright').textContent=brightMode?'Show original materials':'Show visible materials';};
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
