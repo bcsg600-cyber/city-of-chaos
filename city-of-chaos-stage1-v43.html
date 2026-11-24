@@ -1401,12 +1401,42 @@ document.addEventListener('touchmove', e => {
   if (e.touches.length > 1) e.preventDefault();
 }, { passive: false });
 function holdButton(el, code) {
-  el.addEventListener('touchstart', e => { e.preventDefault(); keys[code] = true; }, { passive: false });
-  el.addEventListener('touchend', e => { e.preventDefault(); keys[code] = false; }, { passive: false });
-  el.addEventListener('touchcancel', () => { keys[code] = false; });
+  const release = e => {
+    if (e) e.preventDefault();
+    keys[code] = false;
+    el.classList.remove('pressed');
+  };
+  // Pointer events cover touch, mouse, and stylus with one consistent
+  // press/release path. Capture keeps the button held if the finger drifts.
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    keys[code] = true;
+    el.classList.add('pressed');
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+  el.addEventListener('lostpointercapture', release);
 }
 holdButton(jumpBtn, 'Space');
 holdButton(sprintBtn, 'ShiftLeft');
+
+// Never leave movement or driving inputs stuck if Safari loses focus,
+// the tab is backgrounded, or an operating-system gesture interrupts touch.
+function releaseAllControls() {
+  for (const key of Object.keys(keys)) keys[key] = false;
+  stickVec.x = 0;
+  stickVec.y = 0;
+  stickId = null;
+  knob.style.transform = '';
+  for (const id of ['jumpBtn', 'sprintBtn', 'carLeft', 'carRight', 'carGas', 'carBrake']) {
+    document.getElementById(id)?.classList.remove('pressed');
+  }
+}
+window.addEventListener('blur', releaseAllControls);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) releaseAllControls();
+});
 
 // Dedicated press-and-hold car controls for touchscreens.
 for (const [id, key] of [['carLeft','CarLeft'],['carRight','CarRight'],['carGas','CarGas'],['carBrake','CarBrake']]) {
