@@ -66,7 +66,6 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -1102,170 +1101,16 @@ function poseHitting(r, p) {
 // ---------- Player ----------
 const player = buildHuman({ skin: 0xe8b996, hair: 0x5a3a22, top: 0x7d9cc9, bottom: 0xe2e4e6, shoes: 0x6b3e22, eye: 0x4a3a2a, longSleeves: true });
 const avatar = player.group;
+avatar.visible = true;
 scene.add(avatar);
 
-// Load the uploaded business-man rig as the player model.
-// Keep the procedural character as a fallback if the model cannot load.
-let playerModelMixer = null;
-let playerModelReady = false;
+// The player uses one dependable procedural rig built by buildHuman().
+// Do not load a second GLB/FBX skeleton here: those assets used a different
+// bone hierarchy and previously caused the visible character to remain frozen.
 let desiredPlayerAnimation = 'idle';
-let playerRigPoseBones = {};
-let playerAnimationActions = {};
-let activePlayerAction = null;
-const playerAnimationFiles = {
-  idle: 'Idle.fbx',
-  walk: 'business-man@Walking.fbx',
-  run: 'business-man@Running.fbx',
-  jump: 'Jump.fbx',
-  backwardJump: 'Backward Jump.fbx',
-  walkTurn: 'Walking Left Turn.fbx',
-  sit: 'Sitting.fbx',
-  sitFemale: 'Female Sitting Pose.fbx',
-  enter: 'Entering Car.fbx',
-  exit: 'Exiting Car.fbx'
-};
 function setPlayerModelAnimation(kind) {
-  // The supplied FBX clips do not reliably match the GLB skeleton.
-  // Keep the requested state, and drive the visible rig procedurally instead.
   desiredPlayerAnimation = kind;
-  if (activePlayerAction) {
-    activePlayerAction.stop();
-    activePlayerAction = null;
-  }
 }
-function applyProceduralPlayerRigAnimation(time) {
-  // Always animate the visible GLB skeleton procedurally. Imported FBX clips
-  // can have different bone names and otherwise leave the character frozen.
-  const kind = desiredPlayerAnimation;
-  const moving = kind === 'walk' || kind === 'run';
-  const running = kind === 'run';
-  const cycle = time * (running ? 11.5 : 7.2);
-  const stride = moving ? Math.sin(cycle) * (running ? 0.72 : 0.43) : 0;
-  const armSwing = moving ? Math.sin(cycle + Math.PI) * (running ? 0.48 : 0.30) : Math.sin(time * 1.5) * 0.025;
-  const setRotation = (entry, x = 0, y = 0, z = 0) => {
-    if (!entry) return;
-    entry.bone.rotation.copy(entry.rest);
-    entry.bone.rotation.x += x;
-    entry.bone.rotation.y += y;
-    entry.bone.rotation.z += z;
-  };
-  setRotation(playerRigPoseBones.leftUpperLeg, stride);
-  setRotation(playerRigPoseBones.rightUpperLeg, -stride);
-  setRotation(playerRigPoseBones.leftLowerLeg, Math.max(0, -stride) * 0.72);
-  setRotation(playerRigPoseBones.rightLowerLeg, Math.max(0, stride) * 0.72);
-  // Lower the upper arms out of the default horizontal T-pose, then swing them while walking.
-  setRotation(playerRigPoseBones.leftUpperArm, -armSwing, 0, -0.82);
-  setRotation(playerRigPoseBones.rightUpperArm, armSwing, 0, 0.82);
-  setRotation(playerRigPoseBones.leftLowerArm, moving ? 0.28 + Math.max(0, armSwing) * 0.35 : 0.16);
-  setRotation(playerRigPoseBones.rightLowerArm, moving ? 0.28 + Math.max(0, -armSwing) * 0.35 : 0.16);
-  setRotation(playerRigPoseBones.leftHand, 0, 0, 0);
-  setRotation(playerRigPoseBones.rightHand, 0, 0, 0);
-
-  // Add visible torso bounce, counter-rotation and subtle head movement.
-  const bodyBob = moving ? Math.abs(Math.sin(cycle * 2)) * (running ? 0.045 : 0.025) : Math.sin(time * 2) * 0.012;
-  setRotation(playerRigPoseBones.torso,
-    moving ? Math.sin(cycle) * (running ? 0.10 : 0.055) : Math.sin(time * 1.5) * 0.018,
-    moving ? -Math.sin(cycle) * 0.06 : 0,
-    moving ? Math.sin(cycle) * 0.035 : 0);
-  if (playerRigPoseBones.torso) {
-    playerRigPoseBones.torso.bone.position.y =
-      playerRigPoseBones.torso.baseY + bodyBob;
-  }
-  setRotation(playerRigPoseBones.head,
-    moving ? -Math.sin(cycle) * 0.035 : Math.sin(time * 1.2) * 0.012,
-    moving ? Math.sin(cycle) * 0.025 : 0,
-    0);
-}
-const rigLoader = new GLTFLoader();
-rigLoader.load(
-  'https://raw.githubusercontent.com/bcsg600-cyber/city-of-chaos/main/business_man.glb',
-  gltf => {
-    const model = gltf.scene;
-    model.updateMatrixWorld(true);
-    const bounds = new THREE.Box3().setFromObject(model);
-    const size = bounds.getSize(new THREE.Vector3());
-    const center = bounds.getCenter(new THREE.Vector3());
-    const scale = 1.78 / Math.max(size.y, 0.001);
-    model.scale.setScalar(scale);
-    model.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
-    model.traverse(object => {
-      if (object.isMesh) {
-        object.castShadow = true;
-        object.receiveShadow = true;
-      }
-    });
-    // Keep the imported GLB hidden until its exact bone map is verified.
-    // The visible procedural rig below has known working joints and is animated
-    // by poseWalk/poseRun/poseJumpAir in the game update loop.
-    model.visible = false;
-    avatar.add(model);
-    const rigBones = [];
-    model.traverse(object => { if (object.isBone) rigBones.push(object); });
-    const normalized = name => String(name).toLowerCase().replace(/^mixamorig[:_]?/, '').replace(/[^a-z0-9]/g, '');
-    const findBone = patterns => rigBones.find(b => patterns.some(p => p.test(normalized(b.name))));
-    const save = (key, patterns) => {
-      const bone = findBone(patterns);
-      if (bone) playerRigPoseBones[key] = { bone, rest: bone.rotation.clone() };
-    };
-    save('torso', [/spine2$/, /spine1$/, /spine$/, /chest$/]);
-    if (playerRigPoseBones.torso) playerRigPoseBones.torso.baseY = playerRigPoseBones.torso.bone.position.y;
-    save('head', [/head$/]);
-    save('leftUpperLeg', [/leftupleg$/, /leftthigh$/]);
-    save('rightUpperLeg', [/rightupleg$/, /rightthigh$/]);
-    save('leftLowerLeg', [/leftleg$/, /leftcalf$/]);
-    save('rightLowerLeg', [/rightleg$/, /rightcalf$/]);
-    save('leftUpperArm', [/leftarm$/, /leftupperarm$/, /leftshoulder$/]);
-    save('rightUpperArm', [/rightarm$/, /rightupperarm$/, /rightshoulder$/]);
-    save('leftLowerArm', [/leftforearm$/, /leftlowerarm$/]);
-    save('rightLowerArm', [/rightforearm$/, /rightlowerarm$/]);
-    save('leftHand', [/lefthand$/]);
-    save('rightHand', [/righthand$/]);
-    playerModelMixer = new THREE.AnimationMixer(model);
-    playerModelReady = true;
-    setPlayerModelAnimation('idle');
-
-    // Load each supplied animation FBX and retarget its clip onto the visible GLB rig.
-    // This lets the player keep one consistent character model for every action.
-    const fbxLoader = new FBXLoader();
-    for (const [kind, file] of Object.entries(playerAnimationFiles)) {
-      fbxLoader.load(
-        'https://raw.githubusercontent.com/bcsg600-cyber/city-of-chaos/main/' + encodeURIComponent(file),
-        source => {
-          if (!source.animations || !source.animations.length) {
-            console.warn('No animation clip found in', file);
-            return;
-          }
-          try {
-            const sourceBones = [];
-            source.traverse(o => { if (o.isBone) sourceBones.push(o); });
-            const hip = sourceBones.find(b => /hips$/i.test(b.name)) || sourceBones[0];
-            const clip = THREE.AnimationUtils.retargetClip(model, source, source.animations[0], {
-              hip: hip ? hip.name : undefined,
-              useFirstFramePosition: true
-            });
-            if (!clip || !clip.tracks || clip.tracks.length < 6) {
-              console.warn('Skipping incompatible animation (too few retargeted tracks):', file, clip && clip.tracks ? clip.tracks.length : 0);
-              return;
-            }
-            clip.name = kind;
-            const action = playerModelMixer.clipAction(clip);
-            action.setLoop(kind === 'enter' || kind === 'exit' ? THREE.LoopOnce : THREE.LoopRepeat, kind === 'enter' || kind === 'exit' ? 1 : Infinity);
-            if (kind === 'enter' || kind === 'exit') action.clampWhenFinished = true;
-            playerAnimationActions[kind] = action;
-            if (kind === desiredPlayerAnimation) setPlayerModelAnimation(kind);
-            console.info('Loaded player animation:', kind, file);
-          } catch (error) {
-            console.error('Could not retarget animation:', file, error);
-          }
-        },
-        undefined,
-        error => console.error('Could not load animation:', file, error)
-      );
-    }
-  },
-  undefined,
-  error => console.error('Could not load business_man.glb; using the built-in character.', error)
-);
 
 const pos = new THREE.Vector3(0, 0, 60);
 let vy = 0;
@@ -2463,8 +2308,6 @@ function loop() {
   if (seq) updateSeq(dt);
   else if (inCar) updateCar(dt);
   else updateOnFoot(dt);
-  applyProceduralPlayerRigAnimation(elapsed);
-  if (playerModelMixer) playerModelMixer.update(dt);
   updateEnvironment(dt);
   updateTraffic(dt);
   updateWalkers(dt);
