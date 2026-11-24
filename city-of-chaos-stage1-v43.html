@@ -399,15 +399,19 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
     const wheelNodes = [];
     let importedDoor = null;
     model.traverse(o => {
+      // Some GLB exports hide complete subtrees with visibility flags on parent
+      // groups. Make every node visible, not just the mesh children.
+      o.visible = true;
       if (o.isMesh) {
-        // The same source geometry/materials are shared by every cloned SUV.
-        // Avoid per-car material copies; they waste memory and GPU upload time.
+        // Share source geometry/materials across all vehicles for performance.
         o.castShadow = false;
         o.receiveShadow = false;
-        // Imported vehicle meshes can have bad source bounds; keep every body panel visible.
         o.frustumCulled = false;
-        o.visible = true;
-        if (o.geometry && !o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+        if (o.geometry) {
+          o.geometry.drawRange.start = 0;
+          o.geometry.drawRange.count = Infinity;
+          if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+        }
         const polish = material => {
           if (!material) return material;
           material.side = THREE.DoubleSide;
@@ -1061,23 +1065,15 @@ function setPlayerModelAnimation(kind) {
 }
 
 function updateImportedCharacterAnimation(dt) {
-  if (!playerBoneRig) return;
-  playerAnimationClock += dt;
+  // The AnimationMixer owns animated bones. Do not reset or procedurally rotate
+  // them after mixer.update(), which was overriding the real FBX animation.
+  if (!playerBoneRig || activePlayerAction) return;
   const { bones, bases } = playerBoneRig;
-  const moving = desiredPlayerAnimation === 'walk' || desiredPlayerAnimation === 'run' || desiredPlayerAnimation === 'enter' || desiredPlayerAnimation === 'exit';
-  const jumping = desiredPlayerAnimation === 'jump';
-  const rate = desiredPlayerAnimation === 'run' ? 13 : 8;
-  const swing = moving ? Math.sin(playerAnimationClock * rate) * (desiredPlayerAnimation === 'run' ? 0.62 : 0.38) : 0;
+  // Relax the default T-pose slightly while idle; leave the mixer free to animate
+  // the full run and jump clips whenever those actions are active.
   for (const [key, bone] of Object.entries(bones)) bone.rotation.copy(bases[key]);
-  if (bones.leftThigh) bones.leftThigh.rotation.x += jumping ? -0.65 : swing;
-  if (bones.rightThigh) bones.rightThigh.rotation.x += jumping ? -0.65 : -swing;
-  if (bones.leftShin) bones.leftShin.rotation.x += jumping ? 0.9 : Math.max(0, -swing) * 0.8;
-  if (bones.rightShin) bones.rightShin.rotation.x += jumping ? 0.9 : Math.max(0, swing) * 0.8;
-  if (bones.leftArm) { bones.leftArm.rotation.x += moving ? -swing * 0.75 : 0; bones.leftArm.rotation.z += 1.05; }
-  if (bones.rightArm) { bones.rightArm.rotation.x += moving ? swing * 0.75 : 0; bones.rightArm.rotation.z -= 1.05; }
-  if (bones.leftForearm) bones.leftForearm.rotation.x += moving ? -0.18 : 0.08;
-  if (bones.rightForearm) bones.rightForearm.rotation.x += moving ? -0.18 : 0.08;
-  if (bones.hips) bones.hips.rotation.x += jumping ? -0.12 : moving ? 0.06 : 0;
+  if (bones.leftArm) bones.leftArm.rotation.z += 0.72;
+  if (bones.rightArm) bones.rightArm.rotation.z -= 0.72;
 }
 
 // The FBX clips were exported for this character. Only their animation tracks are
@@ -1109,7 +1105,7 @@ function loadPlayerAnimation(url, key) {
 }
 const pendingPlayerClips = {};
 loadPlayerAnimation('./indian-man-in-suit@Running.fbx', 'run');
-loadPlayerAnimation('./indian-man-in-suit@Standing Jump.fbx', 'jump');
+loadPlayerAnimation('./indian-man-in-suit@Standing Jump 2.fbx', 'jump');
 
 // Once the GLB mixer exists, bind any animation clips that finished loading first.
 function bindPendingPlayerClips() {
