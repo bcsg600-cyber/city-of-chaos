@@ -556,6 +556,15 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
   }, undefined, error => {
     console.error('Could not load shared papercar.glb:', error);
     sharedSUVLoading = false;
+    // Do not leave invisible NPC vehicles with invisible bodies and solid colliders.
+    for (const rec of parkedRecs) {
+      scene.remove(rec.group);
+      const colliderIndex = colliders.indexOf(rec.collider);
+      if (colliderIndex >= 0) colliders.splice(colliderIndex, 1);
+    }
+    parkedRecs.length = 0;
+    for (const t of traffic) scene.remove(t.group);
+    traffic.length = 0;
   });
 }
 
