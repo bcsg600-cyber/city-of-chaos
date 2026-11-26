@@ -3033,7 +3033,9 @@ function loop(timestamp = 0) {
   lastMobileFrame = timestamp;
   const dt = Math.min(clock.getDelta(), 0.05);
   if (gameStarted && !gamePaused) elapsed += dt;
-  if (gameStarted && !gamePaused && playerKnockedOut) updatePlayerKnockout(dt);
+  // The knockout timer must keep running even if another overlay left the game paused.
+  // Otherwise the player stays frozen forever after reaching zero health.
+  if (gameStarted && playerKnockedOut) updatePlayerKnockout(dt);
   else if (gameStarted && !gamePaused && seq) updateSeq(dt);
   else if (gameStarted && !gamePaused && inCar) updateCar(dt);
   else if (gameStarted && !gamePaused) updateOnFoot(dt);
