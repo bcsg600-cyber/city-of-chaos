@@ -123,9 +123,10 @@ function makeDashTex() {
 }
 
 // ---------- Ground and roads ----------
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), mat(0x3a3a40, 0.95));
+// Deep-blue harbor surrounds a stylized five-borough NYC land shape.
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshStandardMaterial({ color: 0x145477, roughness: 0.95 }));
 ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
+ground.position.y = -0.12;
 scene.add(ground);
 
 const BLOCK = 40;
@@ -133,21 +134,57 @@ const ROAD = 12;
 const LOT = BLOCK - ROAD;
 const ROADS = [];
 for (let k = -4.5; k <= 4.5; k++) ROADS.push(k * BLOCK);
+
+// Borough silhouettes in world coordinates: Manhattan, Bronx, Queens,
+// Brooklyn and Staten Island. Each is an ellipse, with narrow waterways
+// separating the land masses so the whole playable map reads as NYC.
+const boroughs = [
+  { name: 'Manhattan', x: -48, z: 28, rx: 34, rz: 190, rot: -0.10 },
+  { name: 'Bronx', x: -34, z: 205, rx: 78, rz: 48, rot: 0.12 },
+  { name: 'Queens', x: 105, z: 82, rx: 112, rz: 82, rot: -0.12 },
+  { name: 'Brooklyn', x: 72, z: -92, rx: 122, rz: 72, rot: 0.10 },
+  { name: 'Staten Island', x: -142, z: -192, rx: 66, rz: 42, rot: -0.18 }
+];
+function isCityLand(x, z, margin = 0) {
+  return boroughs.some(b => {
+    const dx = x - b.x, dz = z - b.z;
+    const cs = Math.cos(b.rot), sn = Math.sin(b.rot);
+    const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;
+    const rx = Math.max(1, b.rx - margin), rz = Math.max(1, b.rz - margin);
+    return (lx * lx) / (rx * rx) + (lz * lz) / (rz * rz) <= 1;
+  });
+}
+const landMat = mat(0x777b80, 0.95);
+for (const b of boroughs) {
+  const land = new THREE.Mesh(new THREE.CircleGeometry(1, 64), landMat);
+  land.rotation.x = -Math.PI / 2;
+  land.rotation.z = b.rot;
+  land.scale.set(b.rx, b.rz, 1);
+  land.position.set(b.x, -0.02, b.z);
+  scene.add(land);
+}
 const colliders = [];
 // Building footprints are retained for the full-city map overlay.
 const mapBuildings = [];
 
 const dashMat = new THREE.MeshStandardMaterial({ color: 0xfff3a0, map: makeDashTex(), transparent: true, roughness: 0.6 });
-const dashGeo = new THREE.PlaneGeometry(0.35, 800);
+const dashGeo = new THREE.PlaneGeometry(0.35, 8);
 dashGeo.rotateX(-Math.PI / 2);
+// Draw road markings only across land, leaving visible harbor gaps between boroughs.
 for (const r of ROADS) {
-  const v = new THREE.Mesh(dashGeo, dashMat);
-  v.position.set(r, 0.03, 0);
-  scene.add(v);
-  const h = new THREE.Mesh(dashGeo, dashMat);
-  h.position.set(0, 0.03, r);
-  h.rotation.y = Math.PI / 2;
-  scene.add(h);
+  for (let p = -220; p < 220; p += 8) {
+    if (isCityLand(r, p, -1)) {
+      const v = new THREE.Mesh(dashGeo, dashMat);
+      v.position.set(r, 0.04, p + 4);
+      scene.add(v);
+    }
+    if (isCityLand(p, r, -1)) {
+      const h = new THREE.Mesh(dashGeo, dashMat);
+      h.position.set(p + 4, 0.04, r);
+      h.rotation.y = Math.PI / 2;
+      scene.add(h);
+    }
+  }
 }
 
 // ---------- Shared materials ----------
@@ -190,6 +227,7 @@ for (let gx = -4; gx <= 4; gx++) {
   for (let gz = -4; gz <= 4; gz++) {
     const cx = gx * BLOCK;
     const cz = gz * BLOCK;
+    if (!isCityLand(cx, cz, -8)) continue;
     const lot = new THREE.Mesh(new THREE.PlaneGeometry(LOT, LOT), lotMat);
     lot.rotation.x = -Math.PI / 2;
     lot.position.set(cx, 0.02, cz);
@@ -273,6 +311,7 @@ const fallenStreetLamps = [];
 
 for (const rx of ROADS) {
   for (const rz of ROADS) {
+    if (!isCityLand(rx, rz, -2)) continue;
     const lamp = new THREE.Group();
     const lampPoleMat = poleMat.clone();
     const lampHeadMat = lampMat.clone();
