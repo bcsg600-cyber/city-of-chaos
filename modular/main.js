@@ -455,21 +455,26 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
   // not allowed to hide or replace the visible vehicle.
   if (!group || group.userData.visibleCarBuilt) return;
   group.userData.visibleCarBuilt = true;
+  group.visible = true;
+  group.frustumCulled = false;
   allCarGroups.push(group);
-  if (carTemplate) { attachCarBody(group); return; }
-  const paint = new THREE.MeshStandardMaterial({ color: 0x1765a8, metalness: 0.62, roughness: 0.28 });
-  const glass = new THREE.MeshStandardMaterial({ color: 0x263e58, metalness: 0.24, roughness: 0.2 });
-  const rubber = new THREE.MeshStandardMaterial({ color: 0x101318, roughness: 0.95 });
-  const alloy = new THREE.MeshStandardMaterial({ color: 0xb8c2ce, metalness: 0.88, roughness: 0.22 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x202832, metalness: 0.35, roughness: 0.5 });
-  const headMat = new THREE.MeshStandardMaterial({ color: 0xfff3d4, emissive: 0x8b7444, emissiveIntensity: 0.55 });
-  const tailMat = new THREE.MeshStandardMaterial({ color: 0xc51f2b, emissive: 0x650810, emissiveIntensity: 0.65 });
+  // Always build a local, self-contained vehicle. Do not depend on an external
+  // GLB, its materials, or its load timing for cars to appear in the world.
+  const paint = new THREE.MeshBasicMaterial({ color: 0xe53935, toneMapped: false });
+  const glass = new THREE.MeshBasicMaterial({ color: 0x17324d, toneMapped: false });
+  const rubber = new THREE.MeshBasicMaterial({ color: 0x111318, toneMapped: false });
+  const alloy = new THREE.MeshBasicMaterial({ color: 0xc7d2df, toneMapped: false });
+  const dark = new THREE.MeshBasicMaterial({ color: 0x202832, toneMapped: false });
+  const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2b2, toneMapped: false });
+  const tailMat = new THREE.MeshBasicMaterial({ color: 0xff253a, toneMapped: false });
   function part(geo, material, x, y, z) {
     const mesh = new THREE.Mesh(geo, material);
     mesh.userData.proc = true;
     mesh.position.set(x, y, z);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 2;
     group.add(mesh);
     return mesh;
   }
