@@ -2393,7 +2393,52 @@ const buyCarBtn = document.getElementById('buyCarBtn');
 const callCarBtn = document.getElementById('callCarBtn');
 let phoneOpen = false;
 function refreshPhone() {
-  phoneBalance.textContent = 'Wallet: 
+  phoneBalance.textContent = 'Wallet: $' + money;
+  const ownsCar = !!ownedCarRec;
+  garageText.textContent = ownsCar ? '1 City SUV is in your garage.' : "You don't own a car yet.";
+  buyCarBtn.disabled = ownsCar;
+  buyCarBtn.textContent = ownsCar ? 'ALREADY OWNED' : 'BUY CAR — $1,500';
+  buyCarBtn.style.opacity = ownsCar ? '.55' : '1';
+  callCarBtn.disabled = !ownsCar || (ownedCarRec && ownedCarRec.inUse);
+  callCarBtn.textContent = ownedCarRec && ownedCarRec.inUse ? 'CAR IS CURRENTLY IN USE' : 'CALL MY CAR';
+}
+function setPhoneOpen(open) {
+  phoneOpen = open;
+  phoneOverlay.style.display = open ? 'grid' : 'none';
+  if (open) { gamePaused = true; refreshPhone(); phoneStatus.textContent = ''; }
+  else if (document.getElementById('pauseOverlay').style.display !== 'grid') gamePaused = false;
+}
+document.getElementById('phoneBtn').addEventListener('click', () => setPhoneOpen(!phoneOpen));
+document.getElementById('closePhone').addEventListener('click', () => setPhoneOpen(false));
+phoneOverlay.addEventListener('click', e => { if (e.target === phoneOverlay) setPhoneOpen(false); });
+buyCarBtn.addEventListener('click', () => {
+  if (ownedCarRec) return;
+  if (money < 1500) { phoneStatus.textContent = 'Not enough money. Earn cash from missions and pickups.'; return; }
+  money -= 1500;
+  const purchased = buildCar(), heading = avatar.rotation.y || 0;
+  const spawnX = pos.x + 8, spawnZ = pos.z + 8;
+  purchased.group.position.set(spawnX, 0, spawnZ);
+  purchased.group.rotation.y = heading;
+  registerParked(purchased, spawnX, spawnZ, heading);
+  ownedCarRec = parkedRecs[parkedRecs.length - 1];
+  ownedCarRec.isOwned = true;
+  refreshHud(); refreshPhone();
+  phoneStatus.textContent = 'Purchase complete! Your City SUV is now in your garage.';
+  showMessage('City SUV purchased! -$1,500', 3);
+});
+callCarBtn.addEventListener('click', () => {
+  if (!ownedCarRec || ownedCarRec.inUse) return;
+  const idx = colliders.indexOf(ownedCarRec.collider);
+  if (idx >= 0) colliders.splice(idx, 1);
+  const heading = avatar.rotation.y || 0;
+  ownedCarRec.x = pos.x + 8; ownedCarRec.z = pos.z + 8; ownedCarRec.h = heading;
+  ownedCarRec.group.position.set(ownedCarRec.x, 0, ownedCarRec.z);
+  ownedCarRec.group.rotation.y = heading;
+  ownedCarRec.collider = makeColliderFor(ownedCarRec.x, ownedCarRec.z, heading);
+  colliders.push(ownedCarRec.collider);
+  refreshPhone(); showMessage('Your car has arrived!', 2.5); setPhoneOpen(false);
+});
+addEventListener('keydown', e => { if (e.code === 'KeyP' && gameStarted && !phoneOpen) setPhoneOpen(true); });
 document.getElementById('closeMap').addEventListener('click', () => setMapOpen(false));
 mapOverlay.addEventListener('click', e => { if (e.target === mapOverlay) setMapOpen(false); });
 addEventListener('keydown', e => { if (e.code === 'Escape' && mapOpen) setMapOpen(false); });
