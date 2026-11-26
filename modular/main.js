@@ -1370,20 +1370,25 @@ for (const r of ROADS) {
   }
 }
 
-// Pedestrians on the sidewalks, walking along the streets
-for (let i = 0; i < 14; i++) {
-  const r = pick(ROADS);
-  const x = r + (Math.random() < 0.5 ? -7.5 : 7.5);
-  const z = rand(-300, 300);
-  if (blocked(x, z, 0.4)) continue;
-  const rig = buildHuman({
-    skin: pick(skinTones), hair: pick(hairTones), top: pick(topTones),
-    bottom: pick(bottomTones), shoes: pick([0x111111, 0x7c2d12, 0xe5e7eb])
-  });
-  scene.add(rig.group);
-  const spd2 = rand(1.2, 2.0);
-  walkers.push({ rig, axis: 'z', x, z, dir: Math.random() < 0.5 ? 1 : -1, speed: spd2, baseSpeed: spd2, walkT: Math.random() * 10 });
+// Pedestrians on the sidewalks. Keep a living city population as NPCs are defeated.
+function spawnWalker() {
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const road = pick(ROADS);
+    const x = road + (Math.random() < 0.5 ? -7.5 : 7.5);
+    const z = rand(-300, 300);
+    if (blocked(x, z, 0.4)) continue;
+    const rig = buildHuman({
+      skin: pick(skinTones), hair: pick(hairTones), top: pick(topTones),
+      bottom: pick(bottomTones), shoes: pick([0x111111, 0x7c2d12, 0xe5e7eb])
+    });
+    scene.add(rig.group);
+    const spd2 = rand(1.2, 2.0);
+    walkers.push({ rig, axis: 'z', x, z, dir: Math.random() < 0.5 ? 1 : -1, speed: spd2, baseSpeed: spd2, walkT: Math.random() * 10, health: 100, angry: 0, attackCooldown: 0 });
+    return true;
+  }
+  return false;
 }
+for (let i = 0; i < 40; i++) spawnWalker();
 
 // ---------- Punching ----------
 let punchT = 0;
@@ -2385,7 +2390,11 @@ function updateWalkers(dt) {
   }
   // Remove defeated pedestrians after their short knockdown animation.
   for (let i = walkers.length - 1; i >= 0; i--) {
-    if (walkers[i].removeMe) walkers.splice(i, 1);
+    if (walkers[i].removeMe) {
+      walkers.splice(i, 1);
+      // Replace defeated NPCs so the city never becomes empty.
+      spawnWalker();
+    }
   }
 }
 
