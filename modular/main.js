@@ -909,6 +909,25 @@ function poseWalk(r, s) {
   r.elbowL.rotation.x = -0.3 - Math.abs(s) * 0.2;
   r.elbowR.rotation.x = -0.3 - Math.abs(s) * 0.2;
 }
+
+function poseNpcPunch(r, t) {
+  // Quick guard -> punch -> recoil cycle, alternating arms.
+  const phase = 1 - THREE.MathUtils.clamp(t / 0.42, 0, 1);
+  const strike = Math.sin(Math.PI * phase);
+  const leftStrike = Math.floor((r.punchCount || 0) / 1) % 2 === 0;
+  const lead = leftStrike ? r.shoulderL : r.shoulderR;
+  const rear = leftStrike ? r.shoulderR : r.shoulderL;
+  const leadElbow = leftStrike ? r.elbowL : r.elbowR;
+  const rearElbow = leftStrike ? r.elbowR : r.elbowL;
+  r.hipL.rotation.x = -0.08;
+  r.hipR.rotation.x = -0.08;
+  r.shoulderL.rotation.z = -0.08;
+  r.shoulderR.rotation.z = 0.08;
+  lead.rotation.x = -1.05 - 1.15 * strike;
+  rear.rotation.x = -0.85;
+  leadElbow.rotation.x = -0.9 + 0.55 * strike;
+  rearElbow.rotation.x = -0.75;
+}
 function poseAir(r) {
   r.hipL.rotation.x = -0.5; r.hipR.rotation.x = 0.3;
   r.kneeL.rotation.x = 0.9; r.kneeR.rotation.x = 0.5;
@@ -2354,9 +2373,19 @@ function updateWalkers(dt) {
       const dx = pos.x - w.x, dz = pos.z - w.z;
       const d = Math.hypot(dx, dz) || 0.001;
       if (d < 1.8) {
-        if (w.attackCooldown <= 0) { damagePlayer(8); w.attackCooldown = 1.25; }
+        if (w.attackCooldown <= 0) {
+          damagePlayer(8);
+          w.attackCooldown = 1.25;
+          w.punchT = 0.42;
+          w.rig.punchCount = (w.rig.punchCount || 0) + 1;
+        }
         w.rig.group.rotation.y = Math.atan2(dx, dz);
-        poseIdle(w.rig);
+        if (w.punchT > 0) {
+          w.punchT = Math.max(0, w.punchT - dt);
+          poseNpcPunch(w.rig, w.punchT);
+        } else {
+          poseIdle(w.rig);
+        }
         continue;
       }
       if (d < 35) {
