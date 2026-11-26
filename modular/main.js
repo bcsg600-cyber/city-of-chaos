@@ -1056,7 +1056,9 @@ function setupPlayerModel(gltf) {
   const center = new THREE.Vector3();
   bounds.getSize(size);
   bounds.getCenter(center);
-  const targetHeight = 2.15; // match the scale of the game's built-in pedestrians
+  // Match the actual pedestrian rig height instead of using a guessed size.
+  const pedestrianBounds = new THREE.Box3().setFromObject(walkers[0].rig.group);
+  const targetHeight = pedestrianBounds.getSize(new THREE.Vector3()).y;
   const scale = targetHeight / Math.max(size.y, 0.001);
   playerModel.scale.setScalar(scale);
   playerModel.position.x = -center.x * scale;
