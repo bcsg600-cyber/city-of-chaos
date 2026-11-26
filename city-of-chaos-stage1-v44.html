@@ -40,6 +40,18 @@
     padding: 10px 14px; color: white; background: rgba(15,23,42,.82);
     font: 700 14px system-ui,sans-serif; touch-action: manipulation;
   }
+  #phoneBtn { position:fixed; top:146px; right:12px; z-index:14; border:1px solid rgba(103,232,249,.65); border-radius:10px; padding:10px 14px; color:#e0f2fe; background:rgba(8,47,73,.94); font:800 14px system-ui,sans-serif; touch-action:manipulation; }
+  #phoneOverlay { position:fixed; inset:0; z-index:60; display:none; place-items:center; padding:16px; box-sizing:border-box; background:rgba(2,6,23,.88); color:white; }
+  #phonePanel { width:min(92vw,460px); max-height:88vh; overflow:auto; padding:20px; box-sizing:border-box; border:1px solid rgba(103,232,249,.4); border-radius:18px; background:linear-gradient(155deg,#0f172a,#102b3c); box-shadow:0 22px 70px rgba(0,0,0,.55); }
+  #phoneTop { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; }
+  #phoneTop h2 { margin:0; font-size:23px; }
+  #phoneTop button, .phoneAction { border:0; border-radius:10px; padding:11px 14px; color:#082f49; background:#67e8f9; font-weight:900; }
+  #phoneBalance { margin:0 0 14px; color:#a5f3fc; font-weight:800; }
+  .dealerCard { padding:14px; margin:10px 0; border:1px solid rgba(148,163,184,.25); border-radius:13px; background:rgba(15,23,42,.8); }
+  .dealerCard h3 { margin:0 0 5px; }
+  .dealerCard p { margin:5px 0 12px; color:#cbd5e1; font-size:13px; }
+  .phoneAction { display:block; width:100%; margin-top:12px; }
+  .phoneAction:disabled { opacity:.5; }
   #mapOverlay {
     position: fixed; inset: 0; z-index: 30; display: none; place-items: center;
     padding: 12px; background: rgba(2,6,23,.88); box-sizing: border-box;
@@ -89,17 +101,6 @@
   #carControls #carBrake { grid-column:2; grid-row:2; background:rgba(153,27,27,.9); }
   #carControls #carBoost { grid-column:3; grid-row:2; background:linear-gradient(145deg,rgba(14,116,144,.96),rgba(109,40,217,.96)); border-color:rgba(103,232,249,.8); }
   #boostHud { display:none; position:fixed; top:146px; right:12px; width:180px; padding:8px 10px; border:1px solid rgba(103,232,249,.28); border-radius:10px; background:rgba(2,6,23,.72); color:#e0f2fe; font:700 11px system-ui,sans-serif; letter-spacing:.1em; pointer-events:none; }
-  #phoneBtn { position:fixed; top:198px; right:12px; z-index:14; border:1px solid rgba(103,232,249,.55); border-radius:12px; padding:10px 14px; color:#e0f2fe; background:rgba(8,47,73,.92); font:800 14px system-ui,sans-serif; touch-action:manipulation; }
-  #phoneOverlay { position:fixed; inset:0; z-index:60; display:none; place-items:center; padding:16px; box-sizing:border-box; background:rgba(2,6,23,.86); color:white; }
-  #phonePanel { width:min(92vw,460px); padding:20px; box-sizing:border-box; border:1px solid rgba(103,232,249,.4); border-radius:18px; background:linear-gradient(155deg,#0f172a,#102b3c); box-shadow:0 22px 70px rgba(0,0,0,.55); }
-  #phoneTop { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; }
-  #phoneTop h2 { margin:0; font-size:23px; }
-  #phoneTop button, #phonePanel .phoneAction { border:0; border-radius:10px; padding:11px 14px; color:#082f49; background:#67e8f9; font-weight:900; }
-  #phoneBalance { margin:0 0 14px; color:#a5f3fc; font-weight:800; }
-  .dealerCard { padding:14px; margin:10px 0; border:1px solid rgba(148,163,184,.25); border-radius:13px; background:rgba(15,23,42,.8); }
-  .dealerCard h3 { margin:0 0 5px; }
-  .dealerCard p { margin:5px 0 12px; color:#cbd5e1; font-size:13px; }
-  #phoneStatus { min-height:20px; color:#a7f3d0; font-size:13px; }
   #boostTrack { height:7px; margin-top:6px; overflow:hidden; border-radius:99px; background:rgba(148,163,184,.28); }
   #boostFill { width:100%; height:100%; border-radius:99px; background:linear-gradient(90deg,#22d3ee,#818cf8); box-shadow:0 0 12px #22d3ee88; transition:width .08s linear; }
   #boostHint { margin-top:4px; color:#94a3b8; font-size:9px; letter-spacing:.04em; }
@@ -146,8 +147,8 @@
   <div id="phonePanel">
     <div id="phoneTop"><h2>📱 My Phone</h2><button id="closePhone" type="button">CLOSE ✕</button></div>
     <p id="phoneBalance">Wallet: $0</p>
-    <div class="dealerCard"><h3>City Motors</h3><p>Buy your own City SUV. Your purchased car will be added to your garage and you can call it to your location.</p><strong>City SUV — $1,500</strong><button id="buyCarBtn" class="phoneAction" type="button" style="display:block;width:100%;margin-top:12px">BUY CAR — $1,500</button></div>
-    <div class="dealerCard"><h3>My Garage</h3><p id="garageText">You don't own a car yet.</p><button id="callCarBtn" class="phoneAction" type="button" style="display:block;width:100%;margin-top:12px" disabled>CALL MY CAR</button></div>
+    <div class="dealerCard"><h3>City Motors</h3><p>Buy a car with money earned in the city. Your purchase is stored in My Garage.</p><strong>City SUV — $1,500</strong><button id="buyCarBtn" class="phoneAction" type="button">BUY CAR — $1,500</button></div>
+    <div class="dealerCard"><h3>My Garage</h3><p id="garageText">You don't own a car yet.</p><button id="callCarBtn" class="phoneAction" type="button" disabled>CALL MY CAR</button></div>
     <div id="phoneStatus" aria-live="polite"></div>
   </div>
 </div>
@@ -2385,60 +2386,6 @@ function setMapOpen(open) {
   if (open) drawCityMap();
 }
 document.getElementById('mapBtn').addEventListener('click', () => setMapOpen(!mapOpen));
-const phoneOverlay = document.getElementById('phoneOverlay');
-const phoneBalance = document.getElementById('phoneBalance');
-const garageText = document.getElementById('garageText');
-const phoneStatus = document.getElementById('phoneStatus');
-const buyCarBtn = document.getElementById('buyCarBtn');
-const callCarBtn = document.getElementById('callCarBtn');
-let phoneOpen = false;
-function refreshPhone() {
-  phoneBalance.textContent = 'Wallet: $' + money;
-  const ownsCar = !!ownedCarRec;
-  garageText.textContent = ownsCar ? '1 City SUV is in your garage.' : "You don't own a car yet.";
-  buyCarBtn.disabled = ownsCar;
-  buyCarBtn.textContent = ownsCar ? 'ALREADY OWNED' : 'BUY CAR — $1,500';
-  buyCarBtn.style.opacity = ownsCar ? '.55' : '1';
-  callCarBtn.disabled = !ownsCar || (ownedCarRec && ownedCarRec.inUse);
-  callCarBtn.textContent = ownedCarRec && ownedCarRec.inUse ? 'CAR IS CURRENTLY IN USE' : 'CALL MY CAR';
-}
-function setPhoneOpen(open) {
-  phoneOpen = open;
-  phoneOverlay.style.display = open ? 'grid' : 'none';
-  if (open) { gamePaused = true; refreshPhone(); phoneStatus.textContent = ''; }
-  else if (document.getElementById('pauseOverlay').style.display !== 'grid') gamePaused = false;
-}
-document.getElementById('phoneBtn').addEventListener('click', () => setPhoneOpen(!phoneOpen));
-document.getElementById('closePhone').addEventListener('click', () => setPhoneOpen(false));
-phoneOverlay.addEventListener('click', e => { if (e.target === phoneOverlay) setPhoneOpen(false); });
-buyCarBtn.addEventListener('click', () => {
-  if (ownedCarRec) return;
-  if (money < 1500) { phoneStatus.textContent = 'Not enough money. Earn cash from missions and pickups.'; return; }
-  money -= 1500;
-  const purchased = buildCar(), heading = avatar.rotation.y || 0;
-  const spawnX = pos.x + 8, spawnZ = pos.z + 8;
-  purchased.group.position.set(spawnX, 0, spawnZ);
-  purchased.group.rotation.y = heading;
-  registerParked(purchased, spawnX, spawnZ, heading);
-  ownedCarRec = parkedRecs[parkedRecs.length - 1];
-  ownedCarRec.isOwned = true;
-  refreshHud(); refreshPhone();
-  phoneStatus.textContent = 'Purchase complete! Your City SUV is now in your garage.';
-  showMessage('City SUV purchased! -$1,500', 3);
-});
-callCarBtn.addEventListener('click', () => {
-  if (!ownedCarRec || ownedCarRec.inUse) return;
-  const idx = colliders.indexOf(ownedCarRec.collider);
-  if (idx >= 0) colliders.splice(idx, 1);
-  const heading = avatar.rotation.y || 0;
-  ownedCarRec.x = pos.x + 8; ownedCarRec.z = pos.z + 8; ownedCarRec.h = heading;
-  ownedCarRec.group.position.set(ownedCarRec.x, 0, ownedCarRec.z);
-  ownedCarRec.group.rotation.y = heading;
-  ownedCarRec.collider = makeColliderFor(ownedCarRec.x, ownedCarRec.z, heading);
-  colliders.push(ownedCarRec.collider);
-  refreshPhone(); showMessage('Your car has arrived!', 2.5); setPhoneOpen(false);
-});
-addEventListener('keydown', e => { if (e.code === 'KeyP' && gameStarted && !phoneOpen) setPhoneOpen(true); });
 document.getElementById('closeMap').addEventListener('click', () => setMapOpen(false));
 mapOverlay.addEventListener('click', e => { if (e.target === mapOverlay) setMapOpen(false); });
 addEventListener('keydown', e => { if (e.code === 'Escape' && mapOpen) setMapOpen(false); });
@@ -2479,8 +2426,7 @@ function showMessage(text, seconds = 3) {
 }
 
 function refreshHud() {
-  hudMoney.textContent = '$' + money;
-  hudStars.textContent = wanted > 0 ? '\u2605'.repeat(wanted) + '\u2606'.repeat(3 - wanted) : 'No wanted level';
+  hudMoney.textContent = ' = wanted > 0 ? '\u2605'.repeat(wanted) + '\u2606'.repeat(3 - wanted) : 'No wanted level';
   hudObjective.textContent = mission.stage === 'pickup'
     ? 'Objective: pick up the package (yellow marker)'
     : 'Objective: deliver the package (green marker)';
@@ -2842,91 +2788,7 @@ loop();
 </body>
 </html>
  + money;
-  const ownsCar = !!ownedCarRec;
-  garageText.textContent = ownsCar ? '1 City SUV is in your garage.' : "You don't own a car yet.";
-  buyCarBtn.disabled = ownsCar;
-  buyCarBtn.textContent = ownsCar ? 'ALREADY OWNED' : 'BUY CAR — $1,500';
-  buyCarBtn.style.opacity = ownsCar ? '.55' : '1';
-  callCarBtn.disabled = !ownsCar || (ownedCarRec && ownedCarRec.inUse);
-  callCarBtn.textContent = ownedCarRec && ownedCarRec.inUse ? 'CAR IS CURRENTLY IN USE' : 'CALL MY CAR';
-}
-function setPhoneOpen(open) {
-  phoneOpen = open;
-  phoneOverlay.style.display = open ? 'grid' : 'none';
-  if (open) { gamePaused = true; refreshPhone(); phoneStatus.textContent = ''; }
-  else if (document.getElementById('pauseOverlay').style.display !== 'grid') gamePaused = false;
-}
-document.getElementById('phoneBtn').addEventListener('click', () => setPhoneOpen(!phoneOpen));
-document.getElementById('closePhone').addEventListener('click', () => setPhoneOpen(false));
-phoneOverlay.addEventListener('click', e => { if (e.target === phoneOverlay) setPhoneOpen(false); });
-buyCarBtn.addEventListener('click', () => {
-  if (ownedCarRec) return;
-  if (money < 1500) { phoneStatus.textContent = 'Not enough money. Earn cash from missions and pickups.'; return; }
-  money -= 1500;
-  const purchased = buildCar(), heading = avatar.rotation.y || 0;
-  const spawnX = pos.x + 8, spawnZ = pos.z + 8;
-  purchased.group.position.set(spawnX, 0, spawnZ);
-  purchased.group.rotation.y = heading;
-  registerParked(purchased, spawnX, spawnZ, heading);
-  ownedCarRec = parkedRecs[parkedRecs.length - 1];
-  ownedCarRec.isOwned = true;
-  refreshHud(); refreshPhone();
-  phoneStatus.textContent = 'Purchase complete! Your City SUV is now in your garage.';
-  showMessage('City SUV purchased! -$1,500', 3);
-});
-callCarBtn.addEventListener('click', () => {
-  if (!ownedCarRec || ownedCarRec.inUse) return;
-  const idx = colliders.indexOf(ownedCarRec.collider);
-  if (idx >= 0) colliders.splice(idx, 1);
-  const heading = avatar.rotation.y || 0;
-  ownedCarRec.x = pos.x + 8; ownedCarRec.z = pos.z + 8; ownedCarRec.h = heading;
-  ownedCarRec.group.position.set(ownedCarRec.x, 0, ownedCarRec.z);
-  ownedCarRec.group.rotation.y = heading;
-  ownedCarRec.collider = makeColliderFor(ownedCarRec.x, ownedCarRec.z, heading);
-  colliders.push(ownedCarRec.collider);
-  refreshPhone(); showMessage('Your car has arrived!', 2.5); setPhoneOpen(false);
-});
-addEventListener('keydown', e => { if (e.code === 'KeyP' && gameStarted && !phoneOpen) setPhoneOpen(true); });
-document.getElementById('closeMap').addEventListener('click', () => setMapOpen(false));
-mapOverlay.addEventListener('click', e => { if (e.target === mapOverlay) setMapOpen(false); });
-addEventListener('keydown', e => { if (e.code === 'Escape' && mapOpen) setMapOpen(false); });
-
-// ---------- Game systems: missions, money, wanted level, police ----------
-let money = 0;
-let wanted = 0;
-let crimeT = 0;
-let crashCooldown = 0;
-let msgT = 0;
-const mission = { stage: 'pickup', pickup: null, drop: null };
-const policeCars = [];
-
-const hudMoney = document.getElementById('money');
-const hudStars = document.getElementById('stars');
-const hudObjective = document.getElementById('objective');
-const hudMsg = document.getElementById('msg');
-
-const policeMat = mat(0x1e3a8a, 0.4);
-const policeRed = new THREE.MeshStandardMaterial({ color: 0x440000, emissive: 0xff1a1a, emissiveIntensity: 0 });
-const policeBlue = new THREE.MeshStandardMaterial({ color: 0x000022, emissive: 0x2a6bff, emissiveIntensity: 0 });
-const lightGeo2 = new THREE.BoxGeometry(0.5, 0.2, 0.3);
-const markerGeo = new THREE.CylinderGeometry(2, 2, 8, 24);
-markerGeo.translate(0, 4, 0);
-const pickupMarker = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({
-  color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 1, transparent: true, opacity: 0.55, depthWrite: false
-}));
-const dropMarker = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({
-  color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 1, transparent: true, opacity: 0.55, depthWrite: false
-}));
-scene.add(pickupMarker, dropMarker);
-
-function showMessage(text, seconds = 3) {
-  hudMsg.textContent = text;
-  hudMsg.style.display = 'block';
-  msgT = seconds;
-}
-
-function refreshHud() {
-  hudMoney.textContent = '$' + money;
+  if (phoneOpen) refreshPhone();
   hudStars.textContent = wanted > 0 ? '\u2605'.repeat(wanted) + '\u2606'.repeat(3 - wanted) : 'No wanted level';
   hudObjective.textContent = mission.stage === 'pickup'
     ? 'Objective: pick up the package (yellow marker)'
@@ -3285,6 +3147,67 @@ addEventListener('resize', () => {
 
 newMission();
 loop();
+
+const phoneOverlay = document.getElementById('phoneOverlay');
+const phoneBalance = document.getElementById('phoneBalance');
+const garageText = document.getElementById('garageText');
+const phoneStatus = document.getElementById('phoneStatus');
+const buyCarBtn = document.getElementById('buyCarBtn');
+const callCarBtn = document.getElementById('callCarBtn');
+let phoneOpen = false;
+let phoneWasPaused = false;
+function refreshPhone() {
+  phoneBalance.textContent = 'Wallet: $' + money;
+  garageText.textContent = ownedCarRec ? '1 City SUV is in your garage.' : "You don't own a car yet.";
+  buyCarBtn.disabled = !!ownedCarRec;
+  buyCarBtn.textContent = ownedCarRec ? 'ALREADY OWNED' : 'BUY CAR — $1,500';
+  callCarBtn.disabled = !ownedCarRec || ownedCarRec.inUse;
+  callCarBtn.textContent = ownedCarRec && ownedCarRec.inUse ? 'CAR IS CURRENTLY IN USE' : 'CALL MY CAR';
+}
+function setPhoneOpen(open) {
+  if (open === phoneOpen) return;
+  phoneOpen = open;
+  phoneOverlay.style.display = open ? 'grid' : 'none';
+  if (open) { phoneWasPaused = gamePaused; gamePaused = true; phoneStatus.textContent = ''; refreshPhone(); }
+  else gamePaused = phoneWasPaused;
+}
+document.getElementById('phoneBtn').addEventListener('click', () => setPhoneOpen(true));
+document.getElementById('closePhone').addEventListener('click', () => setPhoneOpen(false));
+phoneOverlay.addEventListener('click', e => { if (e.target === phoneOverlay) setPhoneOpen(false); });
+buyCarBtn.addEventListener('click', () => {
+  if (ownedCarRec) return;
+  if (money < 1500) { phoneStatus.textContent = 'Not enough money yet. Complete deliveries and collect cash around the city.'; return; }
+  money -= 1500;
+  const purchased = buildCar();
+  const heading = avatar.rotation.y || 0;
+  const spawnX = pos.x + 8, spawnZ = pos.z + 8;
+  purchased.group.position.set(spawnX, 0, spawnZ);
+  purchased.group.rotation.y = heading;
+  registerParked(purchased, spawnX, spawnZ, heading);
+  ownedCarRec = parkedRecs[parkedRecs.length - 1];
+  ownedCarRec.isOwned = true;
+  refreshHud(); refreshPhone();
+  phoneStatus.textContent = 'Purchase complete! Your City SUV is now in your garage.';
+  showMessage('City SUV purchased! -$1,500', 3);
+});
+callCarBtn.addEventListener('click', () => {
+  if (!ownedCarRec || ownedCarRec.inUse) return;
+  const oldIndex = colliders.indexOf(ownedCarRec.collider);
+  if (oldIndex >= 0) colliders.splice(oldIndex, 1);
+  const heading = avatar.rotation.y || 0;
+  ownedCarRec.x = pos.x + 8; ownedCarRec.z = pos.z + 8; ownedCarRec.h = heading;
+  ownedCarRec.group.position.set(ownedCarRec.x, 0, ownedCarRec.z);
+  ownedCarRec.group.rotation.y = heading;
+  ownedCarRec.collider = makeColliderFor(ownedCarRec.x, ownedCarRec.z, heading);
+  colliders.push(ownedCarRec.collider);
+  showMessage('Your car has been delivered nearby!', 2.5);
+  setPhoneOpen(false);
+});
+addEventListener('keydown', e => {
+  if (e.code === 'KeyP' && gameStarted && !phoneOpen) { e.preventDefault(); setPhoneOpen(true); }
+  if (e.code === 'Escape' && phoneOpen) { e.preventDefault(); setPhoneOpen(false); }
+});
+
 </script>
 </body>
 </html>
