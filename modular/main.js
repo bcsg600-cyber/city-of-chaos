@@ -1435,12 +1435,20 @@ function doPunch() {
     if (d < bestD) { best = w; bestD = d; }
   }
   if (best) {
-    // Trigger retaliation immediately: keep the pedestrian standing so the
-    // chase is not hidden behind the five-second knockdown animation.
+    // Pedestrians stay on their feet and retaliate until their health reaches zero.
+    best.health = (best.health ?? 100) - 34;
     best.angry = 15;
     best.attackCooldown = 0.35;
     best.rig.group.rotation.y = Math.atan2(pos.x - best.x, pos.z - best.z);
-    showMessage('Pedestrian is angry! They are chasing you!', 2);
+    if (best.health <= 0) {
+      best.dead = true;
+      best.angry = 0;
+      knockDown(best, pos.x, pos.z, 1.5);
+      best.downT = 1.8;
+      showMessage('Pedestrian defeated!', 1.5);
+    } else {
+      showMessage('Pedestrian health: ' + best.health + ' / 100 — they are fighting back!', 2);
+    }
     addWanted(1, 'Punched a pedestrian!');
   } else {
     showMessage('Nobody close enough to punch', 1.5);
@@ -2324,10 +2332,15 @@ function updateWalkers(dt) {
       w.rig.group.rotation.y = w.fallYaw || 0;
       w.rig.group.rotation.x = -Math.PI / 2 * w.fallT;
       if (w.downT <= 0) {
-        w.down = false;
-        w.fallT = 0;
-        w.rig.group.rotation.x = 0;
-        w.speed = w.baseSpeed;
+        if (w.dead) {
+          scene.remove(w.rig.group);
+          w.removeMe = true;
+        } else {
+          w.down = false;
+          w.fallT = 0;
+          w.rig.group.rotation.x = 0;
+          w.speed = w.baseSpeed;
+        }
       }
       continue;
     }
