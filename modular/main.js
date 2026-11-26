@@ -2383,6 +2383,10 @@ function updateWalkers(dt) {
     w.rig.group.rotation.y = w.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
     poseWalk(w.rig, Math.sin(w.walkT) * 0.8);
   }
+  // Remove defeated pedestrians after their short knockdown animation.
+  for (let i = walkers.length - 1; i >= 0; i--) {
+    if (walkers[i].removeMe) walkers.splice(i, 1);
+  }
 }
 
 function updateGulls(dt) {
