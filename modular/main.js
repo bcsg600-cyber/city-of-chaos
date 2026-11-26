@@ -2606,22 +2606,31 @@ function drawCityMap() {
   if (!mapCtx) return;
   const c = mapCtx, w = mapCanvas.width, h = mapCanvas.height;
   c.clearRect(0, 0, w, h);
-  c.fillStyle = '#385746'; c.fillRect(0, 0, w, h);
-  // Ocean, beach, and city land.
-  c.fillStyle = '#17618b'; c.fillRect(0, 0, w, worldToMapY(205));
-  c.fillStyle = '#e5d39b'; c.fillRect(0, worldToMapY(205), w, Math.max(3, worldToMapY(188)-worldToMapY(205)));
+  c.fillStyle = '#145477'; c.fillRect(0, 0, w, h);
+  // Draw the five borough land masses and their waterways on the map.
+  c.fillStyle = '#858b8e';
+  for (const b of boroughs) {
+    c.beginPath();
+    c.ellipse(worldToMapX(b.x), worldToMapY(b.z), b.rx / 900 * w, b.rz / 900 * h, -b.rot, 0, Math.PI * 2);
+    c.fill();
+  }
   // City blocks and building footprints.
   for (const b of mapBuildings) {
     const x = worldToMapX(b.x - b.w/2), y = worldToMapY(b.z + b.d/2);
     c.fillStyle = '#64748b';
     c.fillRect(x, y, b.w/900*w, b.d/900*h);
   }
-  // Full road grid, including the outer roads.
+  // Roads stop at shorelines instead of continuing through the harbor.
   c.strokeStyle = '#c5cbd1'; c.lineWidth = ROAD/900*w;
   for (const r of ROADS) {
-    const px = worldToMapX(r), py = worldToMapY(r);
-    c.beginPath(); c.moveTo(px, 0); c.lineTo(px, h); c.stroke();
-    c.beginPath(); c.moveTo(0, py); c.lineTo(w, py); c.stroke();
+    for (let p = -220; p < 220; p += 8) {
+      if (isCityLand(r, p, -1)) {
+        c.beginPath(); c.moveTo(worldToMapX(r), worldToMapY(p)); c.lineTo(worldToMapX(r), worldToMapY(p + 8)); c.stroke();
+      }
+      if (isCityLand(p, r, -1)) {
+        c.beginPath(); c.moveTo(worldToMapX(p), worldToMapY(r)); c.lineTo(worldToMapX(p + 8), worldToMapY(r)); c.stroke();
+      }
+    }
   }
   c.strokeStyle = 'rgba(255,255,255,.28)'; c.lineWidth = 1;
   c.strokeRect(1, 1, w-2, h-2);
