@@ -1435,9 +1435,12 @@ function doPunch() {
     if (d < bestD) { best = w; bestD = d; }
   }
   if (best) {
-    best.angry = 8;
-    best.attackCooldown = 0.5;
-    knockDown(best, pos.x, pos.z, 3.5);
+    // Trigger retaliation immediately: keep the pedestrian standing so the
+    // chase is not hidden behind the five-second knockdown animation.
+    best.angry = 15;
+    best.attackCooldown = 0.35;
+    best.rig.group.rotation.y = Math.atan2(pos.x - best.x, pos.z - best.z);
+    showMessage('Pedestrian is angry! They are chasing you!', 2);
     addWanted(1, 'Punched a pedestrian!');
   } else {
     showMessage('Nobody close enough to punch', 1.5);
@@ -2328,18 +2331,18 @@ function updateWalkers(dt) {
       }
       continue;
     }
-    // Arcade retaliation: only pedestrians you hit will briefly chase and bump you.
+    // Arcade retaliation: the pedestrian reacts immediately and chases for 15 seconds.
     if (w.angry > 0 && !inCar) {
       const dx = pos.x - w.x, dz = pos.z - w.z;
       const d = Math.hypot(dx, dz) || 0.001;
-      if (d < 1.45) {
+      if (d < 1.8) {
         if (w.attackCooldown <= 0) { damagePlayer(8); w.attackCooldown = 1.25; }
         w.rig.group.rotation.y = Math.atan2(dx, dz);
         poseIdle(w.rig);
         continue;
       }
-      if (d < 14) {
-        const step = Math.min(d - 1.1, 2.8 * dt);
+      if (d < 35) {
+        const step = Math.min(d - 1.35, 4.5 * dt);
         const nx = w.x + dx / d * step, nz = w.z + dz / d * step;
         if (!blocked(nx, nz, 0.4)) { w.x = nx; w.z = nz; }
         w.rig.group.position.set(w.x, 0, w.z);
