@@ -418,15 +418,20 @@ function attachCarBody(group) {
   group.add(body);
 }
 function onCarTemplate(gltf) {
-  carTemplate = buildCarTemplate(gltf.scene);
-  for (const g of allCarGroups) {
-    for (const child of [...g.children]) {
-      if (child.userData.proc || child.userData.carBody) g.remove(child);
-    }
-    attachCarBody(g);
+  // Keep the procedural SUV meshes visible. The imported 2.glb has produced
+  // empty/off-centre geometry in the browser, so never replace working cars
+  // with it automatically. This prevents every city car disappearing.
+  const candidate = buildCarTemplate(gltf.scene);
+  const box = new THREE.Box3().setFromObject(candidate);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  if (!candidate.children.length || !Number.isFinite(size.length()) || size.length() < 0.1) {
+    console.warn('Ignoring empty car model; keeping visible built-in SUVs.');
+    showMessage('Car model was empty. Keeping the built-in SUVs visible.', 8);
+    return;
   }
-  console.log('Loaded car model:', carTemplate.userData.info);
-  showMessage('Car model loaded: ' + carTemplate.userData.info, 8);
+  console.log('Car model checked; built-in visible SUVs are being kept as fallback.');
+  showMessage('Built-in SUVs kept visible. Imported model not auto-applied.', 8);
 }
 function onCarError(err) {
   console.error('Could not load the car model; using the built-in car.', err);
