@@ -32,8 +32,8 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xbfdcf0, 160, 560);
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1200);
+scene.fog = new THREE.Fog(0xbfdcf0, 260, 1050);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2200);
 
 // ---------- Sky ----------
 const DAY_TOP = new THREE.Color(0x3f7cc4);
@@ -43,7 +43,7 @@ const NIGHT_HORIZON = new THREE.Color(0x1a2440);
 const SUNSET = new THREE.Color(0xff9a5a);
 const skyUniforms = { skyTop: { value: DAY_TOP.clone() }, skyHorizon: { value: DAY_HORIZON.clone() } };
 const sky = new THREE.Mesh(
-  new THREE.SphereGeometry(900, 32, 16),
+  new THREE.SphereGeometry(1500, 32, 16),
   new THREE.ShaderMaterial({
     uniforms: skyUniforms,
     vertexShader: `
@@ -124,7 +124,7 @@ function makeDashTex() {
 
 // ---------- Ground and roads ----------
 // Deep-blue harbor surrounds a stylized five-borough NYC land shape.
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshStandardMaterial({ color: 0x145477, roughness: 0.95 }));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(1500, 1500), new THREE.MeshStandardMaterial({ color: 0x145477, roughness: 0.95 }));
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.12;
 scene.add(ground);
@@ -133,17 +133,17 @@ const BLOCK = 40;
 const ROAD = 12;
 const LOT = BLOCK - ROAD;
 const ROADS = [];
-for (let k = -4.5; k <= 4.5; k++) ROADS.push(k * BLOCK);
+for (let k = -13.5; k <= 13.5; k++) ROADS.push(k * BLOCK);
 
 // Borough silhouettes in world coordinates: Manhattan, Bronx, Queens,
 // Brooklyn and Staten Island. Each is an ellipse, with narrow waterways
 // separating the land masses so the whole playable map reads as NYC.
 const boroughs = [
-  { name: 'Manhattan', x: -48, z: 28, rx: 34, rz: 190, rot: -0.10 },
-  { name: 'Bronx', x: -34, z: 205, rx: 78, rz: 48, rot: 0.12 },
-  { name: 'Queens', x: 105, z: 82, rx: 112, rz: 82, rot: -0.12 },
-  { name: 'Brooklyn', x: 72, z: -92, rx: 122, rz: 72, rot: 0.10 },
-  { name: 'Staten Island', x: -142, z: -192, rx: 66, rz: 42, rot: -0.18 }
+  { name: 'Manhattan', x: -78, z: 45, rx: 52, rz: 292, rot: -0.10 },
+  { name: 'Bronx', x: -55, z: 330, rx: 118, rz: 76, rot: 0.12 },
+  { name: 'Queens', x: 172, z: 132, rx: 178, rz: 132, rot: -0.12 },
+  { name: 'Brooklyn', x: 116, z: -148, rx: 194, rz: 116, rot: 0.10 },
+  { name: 'Staten Island', x: -238, z: -302, rx: 106, rz: 68, rot: -0.18 }
 ];
 function isCityLand(x, z, margin = 0) {
   return boroughs.some(b => {
@@ -166,13 +166,14 @@ for (const b of boroughs) {
 const colliders = [];
 // Building footprints are retained for the full-city map overlay.
 const mapBuildings = [];
+const mapStores = [];
 
 const dashMat = new THREE.MeshStandardMaterial({ color: 0xfff3a0, map: makeDashTex(), transparent: true, roughness: 0.6 });
 const dashGeo = new THREE.PlaneGeometry(0.35, 8);
 dashGeo.rotateX(-Math.PI / 2);
 // Draw road markings only across land, leaving visible harbor gaps between boroughs.
 for (const r of ROADS) {
-  for (let p = -220; p < 220; p += 8) {
+  for (let p = -620; p < 620; p += 12) {
     if (isCityLand(r, p, -1)) {
       const v = new THREE.Mesh(dashGeo, dashMat);
       v.position.set(r, 0.04, p + 4);
@@ -223,8 +224,8 @@ function makeTree(x, z) {
 // ---------- NYC-style Manhattan blocks ----------
 // Repeating street grid, consistent building footprints and a shared
 // pre-war / mid-rise facade style. Heights rise toward the central district.
-for (let gx = -4; gx <= 4; gx++) {
-  for (let gz = -4; gz <= 4; gz++) {
+for (let gx = -13; gx <= 13; gx++) {
+  for (let gz = -13; gz <= 13; gz++) {
     const cx = gx * BLOCK;
     const cz = gz * BLOCK;
     if (!isCityLand(cx, cz, -8)) continue;
@@ -1440,8 +1441,8 @@ function spawnWalker() {
   for (let attempt = 0; attempt < 25; attempt++) {
     const road = pick(ROADS);
     const x = road + (Math.random() < 0.5 ? -7.5 : 7.5);
-    const z = rand(-300, 300);
-    if (blocked(x, z, 0.4)) continue;
+    const z = pick(ROADS);
+    if (!isCityLand(x, z, -4) || blocked(x, z, 0.4)) continue;
     const rig = buildHuman({
       skin: pick(skinTones), hair: pick(hairTones), top: pick(topTones),
       bottom: pick(bottomTones), shoes: pick([0x111111, 0x7c2d12, 0xe5e7eb])
@@ -1611,7 +1612,7 @@ const jumpBtn = document.getElementById('jumpBtn');
 const sprintBtn = document.getElementById('sprintBtn');
 const useBtn = document.getElementById('useBtn');
 const stickVec = { x: 0, y: 0 };
-const STICK_R = 60;
+const STICK_R = 74;
 let stickCx = 0;
 let stickCy = 0;
 function stickUpdate(t) {
@@ -1625,7 +1626,9 @@ function stickUpdate(t) {
   knob.style.transform = `translate(${dx}px, ${dy}px)`;
   stickVec.x = dx / STICK_R;
   stickVec.y = dy / STICK_R;
-  if (Math.hypot(stickVec.x, stickVec.y) < 0.15) { stickVec.x = 0; stickVec.y = 0; }
+  const magnitude = Math.hypot(stickVec.x, stickVec.y);
+  if (magnitude < 0.09) { stickVec.x = 0; stickVec.y = 0; }
+  else { const eased = Math.pow((magnitude - 0.09) / 0.91, 1.35); const scale = eased / magnitude; stickVec.x *= scale; stickVec.y *= scale; }
 }
 function stickEnd(e) {
   e.preventDefault();
@@ -2163,8 +2166,8 @@ function updateOnFoot(dt) {
   if (!dynBlocked(nx, pos.z, RADIUS)) pos.x = nx;
   const nz = pos.z + move.z * speed * dt;
   if (!dynBlocked(pos.x, nz, RADIUS)) pos.z = nz;
-  pos.x = clamp(pos.x, -390, 390);
-  pos.z = clamp(pos.z, -390, 190);
+  pos.x = clamp(pos.x, -590, 590);
+  pos.z = clamp(pos.z, -590, 590);
 
   // Knockback from being hit by a car
   if (knockX || knockZ) {
@@ -2600,8 +2603,9 @@ const mapCanvas = document.getElementById('cityMap');
 const mapCtx = mapCanvas.getContext('2d');
 let mapOpen = false;
 let mapDrawTimer = 0;
-function worldToMapX(x) { return (x + 450) / 900 * mapCanvas.width; }
-function worldToMapY(z) { return (450 - z) / 900 * mapCanvas.height; }
+let mapCenterX = 0, mapCenterZ = 0, mapZoom = 0.92;
+function worldToMapX(x) { return mapCanvas.width / 2 + (x - mapCenterX) * mapZoom * mapCanvas.width / 1200; }
+function worldToMapY(z) { return mapCanvas.height / 2 - (z - mapCenterZ) * mapZoom * mapCanvas.height / 1200; }
 function drawCityMap() {
   if (!mapCtx) return;
   const c = mapCtx, w = mapCanvas.width, h = mapCanvas.height;
@@ -2611,14 +2615,14 @@ function drawCityMap() {
   c.fillStyle = '#858b8e';
   for (const b of boroughs) {
     c.beginPath();
-    c.ellipse(worldToMapX(b.x), worldToMapY(b.z), b.rx / 900 * w, b.rz / 900 * h, -b.rot, 0, Math.PI * 2);
+    c.ellipse(worldToMapX(b.x), worldToMapY(b.z), b.rx * mapZoom * w / 1200, b.rz * mapZoom * h / 1200, -b.rot, 0, Math.PI * 2);
     c.fill();
   }
   // City blocks and building footprints.
   for (const b of mapBuildings) {
     const x = worldToMapX(b.x - b.w/2), y = worldToMapY(b.z + b.d/2);
     c.fillStyle = '#64748b';
-    c.fillRect(x, y, b.w/900*w, b.d/900*h);
+    c.fillRect(x, y, b.w*mapZoom/1200*w, b.d*mapZoom/1200*h);
   }
   // Roads stop at shorelines instead of continuing through the harbor.
   c.strokeStyle = '#c5cbd1'; c.lineWidth = ROAD/900*w;
@@ -2707,7 +2711,8 @@ function refreshHud() {
 }
 
 function randomIntersection() {
-  return { x: pick(ROADS), z: pick(ROADS) };
+  for (let i = 0; i < 100; i++) { const x = pick(ROADS), z = pick(ROADS); if (isCityLand(x, z, -4)) return { x, z }; }
+  return { x: -80, z: 40 };
 }
 
 const cashPickups = [];
@@ -2716,7 +2721,7 @@ const cashPickupMat = new THREE.MeshStandardMaterial({ color: 0x4ade80, emissive
 for (let i = 0; i < 12; i++) {
   const token = new THREE.Mesh(cashPickupGeo, cashPickupMat);
   token.rotation.x = Math.PI / 2;
-  token.position.set(pick(ROADS) + rand(-4, 4), 1.25, pick(ROADS) + rand(-4, 4));
+  { const spot = randomIntersection(); token.position.set(spot.x + rand(-4, 4), 1.25, spot.z + rand(-4, 4)); }
   scene.add(token);
   cashPickups.push({ mesh: token, respawn: 0, phase: Math.random() * Math.PI * 2 });
 }
@@ -2725,7 +2730,7 @@ function updateCashPickups(dt) {
     if (pickup.respawn > 0) {
       pickup.respawn -= dt;
       if (pickup.respawn <= 0) {
-        pickup.mesh.position.set(pick(ROADS) + rand(-4, 4), 1.25, pick(ROADS) + rand(-4, 4));
+        { const spot = randomIntersection(); pickup.mesh.position.set(spot.x + rand(-4, 4), 1.25, spot.z + rand(-4, 4)); }
         pickup.mesh.visible = true;
       }
       continue;
