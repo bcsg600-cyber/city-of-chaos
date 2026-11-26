@@ -40,6 +40,18 @@
     padding: 10px 14px; color: white; background: rgba(15,23,42,.82);
     font: 700 14px system-ui,sans-serif; touch-action: manipulation;
   }
+  #phoneBtn { position:fixed; top:146px; right:12px; z-index:14; border:1px solid rgba(103,232,249,.65); border-radius:10px; padding:10px 14px; color:#e0f2fe; background:rgba(8,47,73,.94); font:800 14px system-ui,sans-serif; touch-action:manipulation; }
+  #phoneOverlay { position:fixed; inset:0; z-index:60; display:none; place-items:center; padding:16px; box-sizing:border-box; background:rgba(2,6,23,.88); color:white; }
+  #phonePanel { width:min(92vw,460px); max-height:88vh; overflow:auto; padding:20px; box-sizing:border-box; border:1px solid rgba(103,232,249,.4); border-radius:18px; background:linear-gradient(155deg,#0f172a,#102b3c); box-shadow:0 22px 70px rgba(0,0,0,.55); }
+  #phoneTop { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; }
+  #phoneTop h2 { margin:0; font-size:23px; }
+  #phoneTop button, .phoneAction { border:0; border-radius:10px; padding:11px 14px; color:#082f49; background:#67e8f9; font-weight:900; }
+  #phoneBalance { margin:0 0 14px; color:#a5f3fc; font-weight:800; }
+  .dealerCard { padding:14px; margin:10px 0; border:1px solid rgba(148,163,184,.25); border-radius:13px; background:rgba(15,23,42,.8); }
+  .dealerCard h3 { margin:0 0 5px; }
+  .dealerCard p { margin:5px 0 12px; color:#cbd5e1; font-size:13px; }
+  .phoneAction { display:block; width:100%; margin-top:12px; }
+  .phoneAction:disabled { opacity:.5; }
   #mapOverlay {
     position: fixed; inset: 0; z-index: 30; display: none; place-items: center;
     padding: 12px; background: rgba(2,6,23,.88); box-sizing: border-box;
@@ -130,6 +142,16 @@
 <button id="jumpBtn" class="btn">JUMP</button>
 <button id="punchBtn" class="btn">PUNCH</button>
 <button id="mapBtn" type="button">MAP</button>
+<button id="phoneBtn" type="button">📱 PHONE</button>
+<div id="phoneOverlay" role="dialog" aria-modal="true" aria-label="Phone and car dealership">
+  <div id="phonePanel">
+    <div id="phoneTop"><h2>📱 My Phone</h2><button id="closePhone" type="button">CLOSE ✕</button></div>
+    <p id="phoneBalance">Wallet: $0</p>
+    <div class="dealerCard"><h3>City Motors</h3><p>Buy a car with money earned in the city. Your purchase is stored in My Garage.</p><strong>City SUV — $1,500</strong><button id="buyCarBtn" class="phoneAction" type="button">BUY CAR — $1,500</button></div>
+    <div class="dealerCard"><h3>My Garage</h3><p id="garageText">You don't own a car yet.</p><button id="callCarBtn" class="phoneAction" type="button" disabled>CALL MY CAR</button></div>
+    <div id="phoneStatus" aria-live="polite"></div>
+  </div>
+</div>
 <div id="mapOverlay" role="dialog" aria-modal="true" aria-label="City map">
   <div id="mapCard">
     <div id="mapTop"><strong>FULL CITY MAP</strong><button id="closeMap" type="button">CLOSE ✕</button></div>
@@ -2370,6 +2392,7 @@ addEventListener('keydown', e => { if (e.code === 'Escape' && mapOpen) setMapOpe
 
 // ---------- Game systems: missions, money, wanted level, police ----------
 let money = 0;
+let ownedCarRec = null;
 let wanted = 0;
 let crimeT = 0;
 let crashCooldown = 0;
@@ -2403,7 +2426,369 @@ function showMessage(text, seconds = 3) {
 }
 
 function refreshHud() {
-  hudMoney.textContent = '$' + money;
+  hudMoney.textContent = ' = wanted > 0 ? '\u2605'.repeat(wanted) + '\u2606'.repeat(3 - wanted) : 'No wanted level';
+  hudObjective.textContent = mission.stage === 'pickup'
+    ? 'Objective: pick up the package (yellow marker)'
+    : 'Objective: deliver the package (green marker)';
+}
+
+function randomIntersection() {
+  return { x: pick(ROADS), z: pick(ROADS) };
+}
+
+const cashPickups = [];
+const cashPickupGeo = new THREE.TorusGeometry(0.85, 0.22, 8, 18);
+const cashPickupMat = new THREE.MeshStandardMaterial({ color: 0x4ade80, emissive: 0x16a34a, emissiveIntensity: 1.2, metalness: 0.45, roughness: 0.3 });
+for (let i = 0; i < 12; i++) {
+  const token = new THREE.Mesh(cashPickupGeo, cashPickupMat);
+  token.rotation.x = Math.PI / 2;
+  token.position.set(pick(ROADS) + rand(-4, 4), 1.25, pick(ROADS) + rand(-4, 4));
+  scene.add(token);
+  cashPickups.push({ mesh: token, respawn: 0, phase: Math.random() * Math.PI * 2 });
+}
+function updateCashPickups(dt) {
+  for (const pickup of cashPickups) {
+    if (pickup.respawn > 0) {
+      pickup.respawn -= dt;
+      if (pickup.respawn <= 0) {
+        pickup.mesh.position.set(pick(ROADS) + rand(-4, 4), 1.25, pick(ROADS) + rand(-4, 4));
+        pickup.mesh.visible = true;
+      }
+      continue;
+    }
+    pickup.mesh.rotation.z += dt * 1.8;
+    pickup.mesh.position.y = 1.25 + Math.sin(elapsed * 2.5 + pickup.phase) * 0.18;
+    const d = Math.hypot(pos.x - pickup.mesh.position.x, pos.z - pickup.mesh.position.z);
+    if (d < 2.4) {
+      money += 100;
+      pickup.mesh.visible = false;
+      pickup.respawn = 18;
+      showMessage('Cash found! +$100', 2);
+      refreshHud();
+    }
+  }
+}
+
+function newMission() {
+  mission.stage = 'pickup';
+  mission.pickup = randomIntersection();
+  let d;
+  do { d = randomIntersection(); }
+  while (Math.hypot(d.x - mission.pickup.x, d.z - mission.pickup.z) < 80);
+  mission.drop = d;
+  pickupMarker.position.set(mission.pickup.x, 0, mission.pickup.z);
+  dropMarker.position.set(mission.drop.x, 0, mission.drop.z);
+  pickupMarker.visible = true;
+  dropMarker.visible = false;
+  refreshHud();
+}
+
+function addWanted(n, reason) {
+  wanted = Math.min(3, wanted + n);
+  crimeT = 0;
+  showMessage(reason + ' Wanted level: ' + wanted, 2.5);
+  refreshHud();
+}
+
+const nearestRoad = v => ROADS.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+
+function spawnPolice() {
+  const car = buildCar();
+  // Police vehicles keep the same shared SUV model; roof lights identify them.
+  const lightL = new THREE.Mesh(lightGeo2, policeRed);
+  const lightR = new THREE.Mesh(lightGeo2, policeBlue);
+  lightL.position.set(-0.4, 1.9, 0);
+  lightR.position.set(0.4, 1.9, 0);
+  car.group.add(lightL, lightR);
+  // Start about 70 m away from the player, on a road
+  const ang = Math.random() * Math.PI * 2;
+  let x = pos.x + Math.cos(ang) * 70;
+  let z = pos.z + Math.sin(ang) * 70;
+  if (Math.random() < 0.5) x = nearestRoad(x) + 2;
+  else z = nearestRoad(z) + 2;
+  x = clamp(x, -385, 385);
+  z = clamp(z, -385, 185);
+  policeCars.push({ car, x, z, h: 0, flashT: 0 });
+}
+
+function clearPolice() {
+  while (policeCars.length) scene.remove(policeCars.pop().car.group);
+}
+
+function updatePolice(dt) {
+  for (const p of policeCars) {
+    const fixP = freeSpot(p.x, p.z, 1.3);
+    if (fixP) { p.x = fixP.x; p.z = fixP.z; }
+  }
+  const desired = wanted * 2;
+  while (policeCars.length < desired) spawnPolice();
+  while (policeCars.length > desired) scene.remove(policeCars.pop().car.group);
+
+  for (const p of policeCars) {
+    const dx = pos.x - p.x;
+    const dz = pos.z - p.z;
+    const dist = Math.hypot(dx, dz);
+    p.h = lerpAngle(p.h, Math.atan2(dx, dz), Math.min(1, dt * 2.5));
+    const speed = clamp(dist * 0.4 + 6, 6, 20);
+    const nx = p.x + Math.sin(p.h) * speed * dt;
+    const nz = p.z + Math.cos(p.h) * speed * dt;
+    if (!carBlocked(nx, nz, p.h)) {
+      p.x = nx;
+      p.z = nz;
+    } else {
+      p.h += dt * 2; // turn away from buildings
+    }
+    p.car.group.position.set(p.x, 0, p.z);
+    p.car.group.rotation.y = p.h;
+    // Keep imported police wheels fixed until their actual pivot axes are verified.
+    p.flashT += dt;
+    const redOn = Math.floor(p.flashT * 4) % 2 === 0;
+    policeRed.emissiveIntensity = redOn ? 3 : 0;
+    policeBlue.emissiveIntensity = redOn ? 0 : 3;
+  }
+}
+
+function busted() {
+  money = Math.max(0, money - 200);
+  wanted = 0;
+  crimeT = 0;
+  clearPolice();
+  inCar = false;
+  avatar.visible = true;
+  pos.set(0, 0, 60);
+  vy = 0;
+  onGround = true;
+  jumpState = 'ground';
+  if (seq && seq.rec) seq.rec.inUse = false;
+  seq = null;
+  leaveStolen();
+  redRec.x = 20;
+  redRec.z = 60;
+  redRec.h = 0;
+  playerCar.position.set(20, 0, 60);
+  playerCar.rotation.y = 0;
+  parkRedCar();
+  car.x = 20;
+  car.z = 60;
+  car.speed = 0;
+  car.h = 0;
+  showMessage('Busted! -$200', 3);
+  refreshHud();
+}
+
+function updateGame(dt) {
+  updateCashPickups(dt);
+  if (msgT > 0) {
+    msgT -= dt;
+    if (msgT <= 0) hudMsg.style.display = 'none';
+  }
+  if (crashCooldown > 0) crashCooldown -= dt;
+
+  // Pedestrians react to the car: flee when it's close, get knocked down when hit
+  if (inCar) {
+    for (const w of walkers) {
+      if (w.down) continue;
+      const d = Math.hypot(w.x - car.x, w.z - car.z);
+      if (d < 2.2 && Math.abs(car.speed) > 5) {
+        knockDown(w, car.x, car.z, 4);
+        addWanted(1, 'Hit a pedestrian!');
+      } else if (d < 7) {
+        if (w.axis !== 'z') w.dir = w.x > car.x ? 1 : -1;
+        w.speed = 4;
+      }
+    }
+  }
+
+  // Traffic cars can hit you on foot or hit your car
+  for (const t of traffic) {
+    if (t.hitCool > 0) t.hitCool -= dt;
+    const rc = t.axis === 'z'
+      ? { x0: t.lane - 1, x1: t.lane + 1, z0: t.p - 2.2, z1: t.p + 2.2 }
+      : { x0: t.p - 2.2, x1: t.p + 2.2, z0: t.lane - 1, z1: t.lane + 1 };
+    const cx = (rc.x0 + rc.x1) / 2;
+    const cz = (rc.z0 + rc.z1) / 2;
+    const inside = (x, z, r) => x > rc.x0 - r && x < rc.x1 + r && z > rc.z0 - r && z < rc.z1 + r;
+
+    if (!inCar && inside(pos.x, pos.z, 0.4) && !(t.hitCool > 0)) {
+      // Knock the player away from the car and throw them up
+      const dx = pos.x - cx;
+      const dz = pos.z - cz;
+      const L = Math.hypot(dx, dz) || 1;
+      startRagdoll(dx / L, dz / L);
+      showMessage('Hit by a car!', 2.5);
+      t.hitCool = 1.5;
+    } else if (inCar && t.hitCool <= 0) {
+      const cxRel = car.x;
+      const czRel = car.z;
+      const hit = inside(cxRel, czRel, 1.5);
+      if (hit) {
+        // Your car is bumped: slow down, shake, and nudge it away
+        car.speed *= 0.3;
+        car.shake = 0.5;
+        const dx = cxRel - cx;
+        const dz = czRel - cz;
+        const L = Math.hypot(dx, dz) || 1;
+        if (!carBlocked(car.x + (dx / L) * 1.5, car.z + (dz / L) * 1.5, car.h)) {
+          car.x += (dx / L) * 1.5;
+          car.z += (dz / L) * 1.5;
+        }
+        showMessage('Crash!', 2);
+        t.hitCool = 1.5;
+      }
+    }
+  }
+
+  // Mission progress (pos follows the car while driving)
+  if (mission.stage === 'pickup') {
+    if (Math.hypot(pos.x - mission.pickup.x, pos.z - mission.pickup.z) < 4) {
+      mission.stage = 'deliver';
+      pickupMarker.visible = false;
+      dropMarker.visible = true;
+      showMessage('Package picked up. Deliver it to the green marker.', 3);
+      refreshHud();
+    }
+  } else if (Math.hypot(pos.x - mission.drop.x, pos.z - mission.drop.z) < 4) {
+    money += 500;
+    showMessage('Delivered! +$500', 3);
+    newMission();
+  }
+
+  // Wanted level fades after 20 seconds without new crimes
+  if (wanted > 0) {
+    crimeT += dt;
+    if (crimeT > 20) {
+      wanted--;
+      crimeT = 0;
+      refreshHud();
+    }
+  }
+
+  updatePolice(dt);
+
+  for (const p of policeCars) {
+    if (Math.hypot(pos.x - p.x, pos.z - p.z) < 4 && (!inCar || Math.abs(car.speed) < 2)) {
+      busted();
+      break;
+    }
+  }
+}
+
+// ---------- Engine sound (generated, no files) ----------
+let audioCtx = null;
+let engineOsc = null;
+let engineGain = null;
+
+function startAudio() {
+  if (audioCtx) {
+    audioCtx.resume();
+    return;
+  }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  engineOsc = audioCtx.createOscillator();
+  engineOsc.type = 'sawtooth';
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 600;
+  engineGain = audioCtx.createGain();
+  engineGain.gain.value = 0;
+  engineOsc.connect(filter);
+  filter.connect(engineGain);
+  engineGain.connect(audioCtx.destination);
+  engineOsc.start();
+}
+// Browsers only allow sound after a tap or key press
+addEventListener('pointerdown', startAudio);
+addEventListener('keydown', startAudio);
+
+function updateEngine() {
+  if (!engineOsc) return;
+  const speed = inCar ? Math.abs(car.speed) : 0;
+  const volume = inCar ? 0.08 + Math.min(speed, 50) / 50 * 0.14 : 0;
+  engineGain.gain.setTargetAtTime(volume, audioCtx.currentTime, 0.1);
+  engineOsc.frequency.setTargetAtTime(55 + speed * 4 + (boostActive ? 38 : 0), audioCtx.currentTime, 0.1);
+}
+
+// ---------- Main loop ----------
+const clock = new THREE.Clock();
+let lastMobileFrame = 0;
+function startGame() {
+  if (gameStarted) return;
+  gameStarted = true;
+  document.getElementById('homeScreen').style.display = 'none';
+  clock.getDelta(); // discard menu time so the first gameplay frame has a small delta
+}
+document.getElementById('startGameBtn').addEventListener('click', startGame);
+const pauseOverlay = document.getElementById('pauseOverlay');
+function setPaused(paused) {
+  if (!gameStarted) return;
+  gamePaused = paused;
+  pauseOverlay.style.display = paused ? 'grid' : 'none';
+  document.getElementById('pauseBtn').textContent = paused ? 'PAUSED' : 'PAUSE';
+  for (const k in keys) keys[k] = false;
+  stickVec.x = 0; stickVec.y = 0;
+  knob.style.transform = 'translate(0px, 0px)';
+}
+document.getElementById('pauseBtn').addEventListener('click', () => setPaused(!gamePaused));
+document.getElementById('resumeBtn').addEventListener('click', () => setPaused(false));
+document.getElementById('pauseMapBtn').addEventListener('click', () => { setPaused(false); setMapOpen(true); });
+addEventListener('keydown', e => {
+  if ((e.code === 'Escape' || e.code === 'KeyP') && gameStarted) {
+    if (mapOpen) return;
+    e.preventDefault();
+    setPaused(!gamePaused);
+  }
+});
+function loop(timestamp = 0) {
+  // Limit low-power touch devices to a stable 30 FPS instead of rendering
+  // needlessly at 60-120 FPS while the scene is already GPU-bound.
+  if (isMobileDevice && timestamp - lastMobileFrame < 1000 / 30) {
+    requestAnimationFrame(loop);
+    return;
+  }
+  lastMobileFrame = timestamp;
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (gameStarted && !gamePaused) elapsed += dt;
+  if (gameStarted && !gamePaused && seq) updateSeq(dt);
+  else if (gameStarted && !gamePaused && inCar) updateCar(dt);
+  else if (gameStarted && !gamePaused) updateOnFoot(dt);
+  if (gameStarted && !gamePaused) updateFallenStreetLamps(dt);
+  if (gameStarted && !gamePaused && playerModelMixer) {
+    playerModelMixer.update(dt);
+  }
+  if (gameStarted && !gamePaused) {
+    updateImportedCharacterAnimation(dt);
+    updateEnvironment(dt);
+    updateTraffic(dt);
+    updateWalkers(dt);
+    updateGulls(dt);
+    updateGame(dt);
+    updateEngine();
+  }
+  if (gameStarted && mapOpen) {
+    mapDrawTimer += dt;
+    if (mapDrawTimer >= 0.25) { drawCityMap(); mapDrawTimer = 0; }
+  }
+  if (gameStarted && !gamePaused) {
+    updateCamera(dt);
+    updateHud();
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+
+addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+newMission();
+loop();
+</script>
+</body>
+</html>
+ + money;
+  if (phoneOpen) refreshPhone();
   hudStars.textContent = wanted > 0 ? '\u2605'.repeat(wanted) + '\u2606'.repeat(3 - wanted) : 'No wanted level';
   hudObjective.textContent = mission.stage === 'pickup'
     ? 'Objective: pick up the package (yellow marker)'
@@ -2758,6 +3143,67 @@ addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+
+const phoneOverlay = document.getElementById('phoneOverlay');
+const phoneBalance = document.getElementById('phoneBalance');
+const garageText = document.getElementById('garageText');
+const phoneStatus = document.getElementById('phoneStatus');
+const buyCarBtn = document.getElementById('buyCarBtn');
+const callCarBtn = document.getElementById('callCarBtn');
+let phoneOpen = false;
+let phoneWasPaused = false;
+function refreshPhone() {
+  phoneBalance.textContent = 'Wallet: $' + money;
+  garageText.textContent = ownedCarRec ? '1 City SUV is in your garage.' : "You don't own a car yet.";
+  buyCarBtn.disabled = !!ownedCarRec;
+  buyCarBtn.textContent = ownedCarRec ? 'ALREADY OWNED' : 'BUY CAR — $1,500';
+  callCarBtn.disabled = !ownedCarRec || ownedCarRec.inUse;
+  callCarBtn.textContent = ownedCarRec && ownedCarRec.inUse ? 'CAR IS CURRENTLY IN USE' : 'CALL MY CAR';
+}
+function setPhoneOpen(open) {
+  if (open === phoneOpen) return;
+  phoneOpen = open;
+  phoneOverlay.style.display = open ? 'grid' : 'none';
+  if (open) { phoneWasPaused = gamePaused; gamePaused = true; phoneStatus.textContent = ''; refreshPhone(); }
+  else gamePaused = phoneWasPaused;
+}
+document.getElementById('phoneBtn').addEventListener('click', () => setPhoneOpen(true));
+document.getElementById('closePhone').addEventListener('click', () => setPhoneOpen(false));
+phoneOverlay.addEventListener('click', e => { if (e.target === phoneOverlay) setPhoneOpen(false); });
+buyCarBtn.addEventListener('click', () => {
+  if (ownedCarRec) return;
+  if (money < 1500) { phoneStatus.textContent = 'Not enough money yet. Complete deliveries and collect cash around the city.'; return; }
+  money -= 1500;
+  const purchased = buildCar();
+  const heading = avatar.rotation.y || 0;
+  const spawnX = pos.x + 8, spawnZ = pos.z + 8;
+  purchased.group.position.set(spawnX, 0, spawnZ);
+  purchased.group.rotation.y = heading;
+  registerParked(purchased, spawnX, spawnZ, heading);
+  ownedCarRec = parkedRecs[parkedRecs.length - 1];
+  ownedCarRec.isOwned = true;
+  refreshHud(); refreshPhone();
+  phoneStatus.textContent = 'Purchase complete! Your City SUV is now in your garage.';
+  showMessage('City SUV purchased! -$1,500', 3);
+});
+callCarBtn.addEventListener('click', () => {
+  if (!ownedCarRec || ownedCarRec.inUse) return;
+  const oldIndex = colliders.indexOf(ownedCarRec.collider);
+  if (oldIndex >= 0) colliders.splice(oldIndex, 1);
+  const heading = avatar.rotation.y || 0;
+  ownedCarRec.x = pos.x + 8; ownedCarRec.z = pos.z + 8; ownedCarRec.h = heading;
+  ownedCarRec.group.position.set(ownedCarRec.x, 0, ownedCarRec.z);
+  ownedCarRec.group.rotation.y = heading;
+  ownedCarRec.collider = makeColliderFor(ownedCarRec.x, ownedCarRec.z, heading);
+  colliders.push(ownedCarRec.collider);
+  showMessage('Your car has been delivered nearby!', 2.5);
+  setPhoneOpen(false);
+});
+addEventListener('keydown', e => {
+  if (e.code === 'KeyP' && gameStarted && !phoneOpen) { e.preventDefault(); setPhoneOpen(true); }
+  if (e.code === 'Escape' && phoneOpen) { e.preventDefault(); setPhoneOpen(false); }
 });
 
 newMission();
