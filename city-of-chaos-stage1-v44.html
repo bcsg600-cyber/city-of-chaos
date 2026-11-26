@@ -3145,8 +3145,6 @@ addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-newMission();
-loop();
 
 const phoneOverlay = document.getElementById('phoneOverlay');
 const phoneBalance = document.getElementById('phoneBalance');
@@ -3208,6 +3206,8 @@ addEventListener('keydown', e => {
   if (e.code === 'Escape' && phoneOpen) { e.preventDefault(); setPhoneOpen(false); }
 });
 
+newMission();
+loop();
 </script>
 </body>
 </html>
