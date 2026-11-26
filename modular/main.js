@@ -1484,7 +1484,9 @@ function damagePlayer(amount) {
     playerKnockedOut = true;
     playerKOTime = WASTED_DURATION;
     punchT = 0;
-    stickVec.set(0, 0);
+    stickVec.x = 0;
+    stickVec.y = 0;
+    knob.style.transform = '';
     keys.KeyW = keys.KeyA = keys.KeyS = keys.KeyD = false;
     setPlayerModelAnimation('idle');
     avatar.rotation.set(0, avatar.rotation.y, 0);
