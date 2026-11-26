@@ -911,22 +911,19 @@ function poseWalk(r, s) {
 }
 
 function poseNpcPunch(r, t) {
-  // Quick guard -> punch -> recoil cycle, alternating arms.
-  const phase = 1 - THREE.MathUtils.clamp(t / 0.42, 0, 1);
+  // Clear guard -> forward thrust -> recoil, alternating the lead arm.
+  const phase = 1 - THREE.MathUtils.clamp(t / 0.5, 0, 1);
   const strike = Math.sin(Math.PI * phase);
-  const leftStrike = Math.floor((r.punchCount || 0) / 1) % 2 === 0;
-  const lead = leftStrike ? r.shoulderL : r.shoulderR;
-  const rear = leftStrike ? r.shoulderR : r.shoulderL;
-  const leadElbow = leftStrike ? r.elbowL : r.elbowR;
-  const rearElbow = leftStrike ? r.elbowR : r.elbowL;
-  r.hipL.rotation.x = -0.08;
-  r.hipR.rotation.x = -0.08;
+  const leftStrike = (r.punchCount || 0) % 2 === 1;
+  r.hipL.rotation.x = -0.12;
+  r.hipR.rotation.x = -0.12;
+  r.torso.rotation.x = -0.12 - strike * 0.12;
   r.shoulderL.rotation.z = -0.08;
   r.shoulderR.rotation.z = 0.08;
-  lead.rotation.x = -1.05 - 1.15 * strike;
-  rear.rotation.x = -0.85;
-  leadElbow.rotation.x = -0.9 + 0.55 * strike;
-  rearElbow.rotation.x = -0.75;
+  r.shoulderL.rotation.x = leftStrike ? -1.0 - 1.25 * strike : -0.95;
+  r.shoulderR.rotation.x = leftStrike ? -0.95 : -1.0 - 1.25 * strike;
+  r.elbowL.rotation.x = leftStrike ? -0.25 : -0.7;
+  r.elbowR.rotation.x = leftStrike ? -0.7 : -0.25;
 }
 function poseAir(r) {
   r.hipL.rotation.x = -0.5; r.hipR.rotation.x = 0.3;
@@ -1422,15 +1419,50 @@ function setPlayerHealth(value) {
   if (label) label.textContent = Math.ceil(playerHealth) + ' / 100';
   if (fill) fill.style.background = playerHealth < 30 ? '#ef4444' : playerHealth < 60 ? '#f59e0b' : '#22c55e';
 }
+let playerKnockedOut = false;
+let playerKOTime = 0;
+const WASTED_DURATION = 3.2;
+function showWastedScreen(show) {
+  const overlay = document.getElementById('wastedOverlay');
+  if (overlay) overlay.classList.toggle('show', show);
+}
 function damagePlayer(amount) {
-  if (playerHitCooldown > 0 || inCar || !gameStarted || gamePaused) return;
+  if (playerKnockedOut || playerHitCooldown > 0 || inCar || !gameStarted || gamePaused) return;
   playerHitCooldown = 0.85;
   setPlayerHealth(playerHealth - amount);
-  showMessage('An angry pedestrian bumped you! -' + amount + ' health', 1.4);
   if (playerHealth <= 0) {
+    playerKnockedOut = true;
+    playerKOTime = WASTED_DURATION;
+    punchT = 0;
+    stickVec.set(0, 0);
+    keys.KeyW = keys.KeyA = keys.KeyS = keys.KeyD = false;
+    setPlayerModelAnimation('idle');
+    avatar.rotation.set(0, avatar.rotation.y, 0);
+    showWastedScreen(true);
+    return;
+  }
+  showMessage('An angry pedestrian bumped you! -' + amount + ' health', 1.4);
+}
+function updatePlayerKnockout(dt) {
+  if (!playerKnockedOut) return;
+  playerKOTime = Math.max(0, playerKOTime - dt);
+  const progress = 1 - playerKOTime / WASTED_DURATION;
+  // Smoothly tip the player onto the ground, then keep them down during the overlay.
+  const fall = Math.min(1, progress * 4);
+  avatar.rotation.z = Math.sin(fall * Math.PI / 2) * 1.48;
+  avatar.position.copy(pos);
+  avatar.position.y = Math.max(0.04, 0.7 * (1 - fall));
+  if (playerKOTime <= 0) {
+    playerKnockedOut = false;
+    avatar.rotation.z = 0;
+    avatar.position.copy(pos);
+    avatar.position.y = 0;
     pos.set(0, 0, 60);
+    avatar.position.copy(pos);
     setPlayerHealth(100);
-    showMessage('You recovered at the city spawn. Health restored!', 3);
+    playerHitCooldown = 1;
+    showWastedScreen(false);
+    showMessage('You respawned at the city spawn.', 2.5);
   }
 }
 
@@ -2936,7 +2968,8 @@ function loop(timestamp = 0) {
   lastMobileFrame = timestamp;
   const dt = Math.min(clock.getDelta(), 0.05);
   if (gameStarted && !gamePaused) elapsed += dt;
-  if (gameStarted && !gamePaused && seq) updateSeq(dt);
+  if (gameStarted && !gamePaused && playerKnockedOut) updatePlayerKnockout(dt);
+  else if (gameStarted && !gamePaused && seq) updateSeq(dt);
   else if (gameStarted && !gamePaused && inCar) updateCar(dt);
   else if (gameStarted && !gamePaused) updateOnFoot(dt);
   if (gameStarted && !gamePaused) updateFallenStreetLamps(dt);
