@@ -151,7 +151,7 @@ for (const r of ROADS) {
 }
 
 // ---------- Shared materials ----------
-const lotMat = mat(0x6f8a5c, 0.95);
+const lotMat = mat(0x777b80, 0.95); // concrete sidewalks / block paving
 const palette = [0xc9b79c, 0x8fa3b5, 0xd8d2c4, 0x9aa9b8, 0xb07a5a, 0xe2e8f0, 0x7d8aa0];
 const roofMat = mat(0x4b5160, 0.9);
 const emissiveMats = [];
@@ -183,40 +183,42 @@ function makeTree(x, z) {
   trees.push({ group: g, phase: Math.random() * 10 });
 }
 
-// ---------- City blocks ----------
+// ---------- NYC-style Manhattan blocks ----------
+// Repeating street grid, consistent building footprints and a shared
+// pre-war / mid-rise facade style. Heights rise toward the central district.
 for (let gx = -4; gx <= 4; gx++) {
   for (let gz = -4; gz <= 4; gz++) {
     const cx = gx * BLOCK;
     const cz = gz * BLOCK;
-
     const lot = new THREE.Mesh(new THREE.PlaneGeometry(LOT, LOT), lotMat);
     lot.rotation.x = -Math.PI / 2;
     lot.position.set(cx, 0.02, cz);
     lot.receiveShadow = true;
     scene.add(lot);
 
-    if (Math.random() < 0.25) {
-      for (let i = 0; i < 3; i++) makeTree(cx + rand(-10, 10), cz + rand(-10, 10));
-      continue;
-    }
+    // Keep every building footprint the same size and aligned to its block.
+    // The skyline gets taller toward the middle, like Midtown Manhattan.
+    const w = 24;
+    const d = 24;
+    const district = Math.max(Math.abs(gx), Math.abs(gz));
+    const heightByRing = [92, 78, 64, 48, 34];
+    const h = heightByRing[Math.min(4, district)] + ((gx * 7 + gz * 11 + 90) % 4) * 3;
+    const bx = cx;
+    const bz = cz;
 
-    const w = rand(10, 22);
-    const d = rand(10, 22);
-    const h = rand(8, 60);
-    const bx = cx + rand(-(LOT - w) / 2, (LOT - w) / 2);
-    const bz = cz + rand(-(LOT - d) / 2, (LOT - d) / 2);
-
-    const variant = pick(windowVariants);
+    const variant = windowVariants[(Math.abs(gx * 3 + gz * 5)) % windowVariants.length];
     const map = variant.day.clone();
     const emissiveMap = variant.night.clone();
-    map.repeat.set(Math.max(1, w / 4), Math.max(1, h / 4));
+    map.repeat.set(6, Math.max(4, h / 4));
     emissiveMap.repeat.copy(map.repeat);
     map.needsUpdate = true;
     emissiveMap.needsUpdate = true;
 
+    const facadeColors = [0xb8a58d, 0x9dabb5, 0xc4c0b5, 0x8f9aa5, 0xa77d65];
     const bMat = new THREE.MeshStandardMaterial({
-      color: pick(palette), map, emissiveMap, emissive: 0xffffff,
-      emissiveIntensity: 0, roughness: 0.75, metalness: 0.05
+      color: facadeColors[(Math.abs(gx * 5 + gz * 3)) % facadeColors.length],
+      map, emissiveMap, emissive: 0xffffff,
+      emissiveIntensity: 0, roughness: 0.82, metalness: 0.03
     });
     emissiveMats.push(bMat);
     const building = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bMat);
@@ -226,19 +228,27 @@ for (let gx = -4; gx <= 4; gx++) {
     scene.add(building);
     mapBuildings.push({ x: bx, z: bz, w, d });
 
-    if (Math.random() < 0.4) {
-      const rh = rand(2, 5);
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(w * rand(0.4, 0.7), rh, d * rand(0.4, 0.7)), roofMat);
-      roof.position.set(bx, h + rh / 2, bz);
-      roof.castShadow = true;
-      scene.add(roof);
-    }
+    // Flat roof and a small rooftop mechanical penthouse / water-tank block.
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(w * 0.94, 0.8, d * 0.94), roofMat);
+    roof.position.set(bx, h + 0.4, bz);
+    roof.castShadow = true;
+    scene.add(roof);
+    const penthouseH = 2.8;
+    const penthouse = new THREE.Mesh(
+      new THREE.BoxGeometry(7, penthouseH, 6),
+      roofMat
+    );
+    penthouse.position.set(bx + 4, h + 0.8 + penthouseH / 2, bz - 3);
+    penthouse.castShadow = true;
+    scene.add(penthouse);
 
-    if (Math.random() < 0.35) {
-      const sign = new THREE.Mesh(new THREE.BoxGeometry(w * 0.5, 1.4, 0.25), pick(neonMats));
-      sign.position.set(bx, rand(4, Math.max(5, h - 4)), bz + d / 2 + 0.15);
-      scene.add(sign);
-    }
+    // A restrained storefront sign at street level, rather than random neon.
+    const signMat = new THREE.MeshStandardMaterial({
+      color: 0x263746, emissive: 0x142a3b, emissiveIntensity: 0.15, roughness: 0.6
+    });
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(9, 1.1, 0.22), signMat);
+    sign.position.set(bx, 4.2, bz + d / 2 + 0.13);
+    scene.add(sign);
 
     colliders.push({ minX: bx - w / 2, maxX: bx + w / 2, minZ: bz - d / 2, maxZ: bz + d / 2 });
   }
