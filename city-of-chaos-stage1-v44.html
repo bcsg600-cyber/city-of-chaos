@@ -617,17 +617,45 @@ function addSharedSUV(group, wheelTargets = [], doorTarget = null) {
     sharedSUVTemplate = gltf.scene;
     for (const waiter of sharedSUVWaiters.splice(0)) waiter(sharedSUVTemplate);
   }, undefined, error => {
-    console.error('Could not load shared 2.glb Shelby vehicle:', error);
+    console.error('Could not load shared 2.glb Shelby vehicle; using built-in fallback cars:', error);
     sharedSUVLoading = false;
-    // Do not leave invisible NPC vehicles with invisible bodies and solid colliders.
-    for (const rec of parkedRecs) {
-      scene.remove(rec.group);
-      const colliderIndex = colliders.indexOf(rec.collider);
-      if (colliderIndex >= 0) colliders.splice(colliderIndex, 1);
+    // Keep every vehicle visible even if the external GLB fails to load.
+    const fallbackBodyMat = new THREE.MeshStandardMaterial({ color: 0x1765a8, metalness: 0.55, roughness: 0.3 });
+    const fallbackGlassMat = new THREE.MeshStandardMaterial({ color: 0x263e58, metalness: 0.2, roughness: 0.18 });
+    const fallbackTyreMat = new THREE.MeshStandardMaterial({ color: 0x111318, roughness: 0.92 });
+    const fallbackTrimMat = new THREE.MeshStandardMaterial({ color: 0x9aa5b1, metalness: 0.8, roughness: 0.25 });
+    const fallbackWheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.3, 16);
+    fallbackWheelGeo.rotateZ(Math.PI / 2);
+    function addFallbackCar(group) {
+      if (!group || group.userData.fallbackCarAdded) return;
+      group.userData.fallbackCarAdded = true;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.72, 4.35), fallbackBodyMat);
+      body.position.y = 0.78;
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.78, 2.05), fallbackGlassMat);
+      cabin.position.set(0, 1.48, -0.25);
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.12, 1.9), fallbackBodyMat);
+      roof.position.set(0, 1.91, -0.25);
+      group.add(body, cabin, roof);
+      for (const x of [-1.04, 1.04]) for (const z of [-1.35, 1.35]) {
+        const wheel = new THREE.Mesh(fallbackWheelGeo, fallbackTyreMat);
+        wheel.position.set(x, 0.42, z);
+        group.add(wheel);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.32, 12).rotateZ(Math.PI / 2), fallbackTrimMat);
+        hub.position.copy(wheel.position);
+        group.add(hub);
+      }
+      for (const x of [-0.68, 0.68]) {
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.18, 0.08), new THREE.MeshStandardMaterial({ color: 0xfff1c8, emissive: 0x665533 }));
+        head.position.set(x, 0.9, 2.2);
+        const tail = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.18, 0.08), new THREE.MeshStandardMaterial({ color: 0xc51f2b, emissive: 0x550811 }));
+        tail.position.set(x, 0.9, -2.2);
+        group.add(head, tail);
+      }
+      group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     }
-    parkedRecs.length = 0;
-    for (const t of traffic) scene.remove(t.group);
-    traffic.length = 0;
+    scene.traverse(o => {
+      if (o.isGroup && (o.name === 'papercar-suv-vehicle' || o.name === 'player-shared-papercar-suv')) addFallbackCar(o);
+    });
   });
 }
 
