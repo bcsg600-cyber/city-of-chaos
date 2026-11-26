@@ -1378,6 +1378,27 @@ for (let i = 0; i < 14; i++) {
 // ---------- Punching ----------
 let punchT = 0;
 const PUNCH_DUR = 0.45;
+let playerHealth = 100;
+let playerHitCooldown = 0;
+function setPlayerHealth(value) {
+  playerHealth = THREE.MathUtils.clamp(value, 0, 100);
+  const fill = document.getElementById('healthFill');
+  const label = document.getElementById('healthValue');
+  if (fill) fill.style.width = playerHealth + '%';
+  if (label) label.textContent = Math.ceil(playerHealth) + ' / 100';
+  if (fill) fill.style.background = playerHealth < 30 ? '#ef4444' : playerHealth < 60 ? '#f59e0b' : '#22c55e';
+}
+function damagePlayer(amount) {
+  if (playerHitCooldown > 0 || inCar || !gameStarted || gamePaused) return;
+  playerHitCooldown = 0.85;
+  setPlayerHealth(playerHealth - amount);
+  showMessage('An angry pedestrian bumped you! -' + amount + ' health', 1.4);
+  if (playerHealth <= 0) {
+    pos.set(0, 0, 60);
+    setPlayerHealth(100);
+    showMessage('You recovered at the city spawn. Health restored!', 3);
+  }
+}
 
 // Knock a pedestrian over, falling away from the point they were hit from
 function knockDown(w, fromX, fromZ, power) {
@@ -1404,6 +1425,8 @@ function doPunch() {
     if (d < bestD) { best = w; bestD = d; }
   }
   if (best) {
+    best.angry = 8;
+    best.attackCooldown = 0.5;
     knockDown(best, pos.x, pos.z, 3.5);
     addWanted(1, 'Punched a pedestrian!');
   } else {
@@ -2271,7 +2294,10 @@ function updateTraffic(dt) {
 }
 
 function updateWalkers(dt) {
+  playerHitCooldown = Math.max(0, playerHitCooldown - dt);
   for (const w of walkers) {
+    w.attackCooldown = Math.max(0, (w.attackCooldown || 0) - dt);
+    w.angry = Math.max(0, (w.angry || 0) - dt);
     if (w.down) {
       w.downT -= dt;
       w.fallT = Math.min(1, (w.fallT || 0) + dt / 0.35);
@@ -2291,6 +2317,27 @@ function updateWalkers(dt) {
         w.speed = w.baseSpeed;
       }
       continue;
+    }
+    // Arcade retaliation: only pedestrians you hit will briefly chase and bump you.
+    if (w.angry > 0 && !inCar) {
+      const dx = pos.x - w.x, dz = pos.z - w.z;
+      const d = Math.hypot(dx, dz) || 0.001;
+      if (d < 1.45) {
+        if (w.attackCooldown <= 0) { damagePlayer(8); w.attackCooldown = 1.25; }
+        w.rig.group.rotation.y = Math.atan2(dx, dz);
+        poseIdle(w.rig);
+        continue;
+      }
+      if (d < 14) {
+        const step = Math.min(d - 1.1, 2.8 * dt);
+        const nx = w.x + dx / d * step, nz = w.z + dz / d * step;
+        if (!blocked(nx, nz, 0.4)) { w.x = nx; w.z = nz; }
+        w.rig.group.position.set(w.x, 0, w.z);
+        w.rig.group.rotation.y = Math.atan2(dx, dz);
+        w.walkT += dt * 14;
+        poseWalk(w.rig, Math.sin(w.walkT) * 0.9);
+        continue;
+      }
     }
     if (w.axis === 'z') {
       const nz = w.z + w.dir * w.speed * dt;
