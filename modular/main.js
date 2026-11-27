@@ -2708,15 +2708,37 @@ function drawCityMap() {
     c.restore();
   }
 
-  // Map title and a simple north marker, inspired by the supplied NYC map.
-  c.fillStyle = 'rgba(255,255,255,.92)';
+  // Title panel and north compass, following the supplied reference map.
+  c.fillStyle = 'rgba(255,255,255,.94)';
   c.fillRect(14, 12, 250, 42);
   c.strokeStyle = '#21495c'; c.lineWidth = 3; c.strokeRect(14, 12, 250, 42);
   c.fillStyle = '#21495c'; c.font = 'bold 27px Arial, sans-serif';
   c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText('NEW YORK CITY', 24, 34);
-  c.fillStyle = '#285b73';
+  c.fillStyle = '#4d9ac0';
   c.beginPath(); c.moveTo(34, 72); c.lineTo(44, 96); c.lineTo(34, 120); c.lineTo(24, 96); c.closePath(); c.fill();
   c.strokeStyle = '#183c50'; c.lineWidth = 1.5; c.stroke();
+  c.beginPath(); c.arc(34, 146, 16, 0, Math.PI * 2); c.fill(); c.stroke();
+  c.beginPath(); c.moveTo(34, 130); c.lineTo(34, 162); c.moveTo(18, 146); c.lineTo(50, 146); c.stroke();
+  c.font = 'bold 16px Georgia, serif'; c.textAlign = 'center'; c.fillStyle = '#21495c'; c.fillText('N', 34, 181);
+
+  // Airport markers and labels shown on the reference map.
+  function drawAirport(x, z, label, align = 'left') {
+    const ax = worldToMapX(x), ay = worldToMapY(z);
+    c.save();
+    c.translate(ax, ay);
+    c.fillStyle = '#243f65';
+    c.font = 'bold 22px Arial, sans-serif';
+    c.textAlign = 'center';
+    c.fillText('✈', 0, 6);
+    c.fillStyle = '#b3261e';
+    c.font = 'italic bold 12px Arial, sans-serif';
+    c.textAlign = align;
+    c.fillText(label, align === 'right' ? -12 : 12, -8);
+    c.restore();
+  }
+  drawAirport(95, 165, 'LaGuardia Airport');
+  drawAirport(345, -245, 'John F. Kennedy Airport', 'right');
+  drawAirport(-470, -80, 'Newark Liberty International Airport', 'right');
 
   // Missions, parked cars, and player marker remain visible above the map art.
   if (mission.pickup) {
