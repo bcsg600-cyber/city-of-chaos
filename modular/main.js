@@ -336,17 +336,27 @@ function addSignalHead(parent, x, y, z, rotationY, axis) {
   const head = new THREE.Group();
   head.position.set(x, y, z);
   head.rotation.y = rotationY;
-  const housing = new THREE.Mesh(new THREE.BoxGeometry(0.82, 2.25, 0.62), tlMetal);
+  // Larger NYC-style yellow signal housing with a black recessed face.
+  const housing = new THREE.Mesh(new THREE.BoxGeometry(0.94, 2.55, 0.72), tlMetal);
   head.add(housing);
-  const visorGeo = new THREE.CylinderGeometry(0.23, 0.23, 0.18, 16);
+  const face = new THREE.Mesh(
+    new THREE.BoxGeometry(0.68, 2.28, 0.10),
+    tlBlack
+  );
+  face.position.set(0, 0, -0.405);
+  head.add(face);
+  const visorGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.22, 18);
   visorGeo.rotateX(Math.PI / 2);
+  const lensGeo = new THREE.CircleGeometry(0.205, 24);
   const lenses = [];
   ['red','amber','green'].forEach((color, i) => {
+    const y = 0.72 - i * 0.72;
     const visor = new THREE.Mesh(visorGeo, tlBlack);
-    visor.position.set(0, 0.68 - i * 0.68, -0.38);
+    visor.position.set(0, y, -0.49);
     head.add(visor);
-    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.19, 16, 12), lensOff);
-    lens.position.set(0, 0.68 - i * 0.68, -0.49);
+    const lens = new THREE.Mesh(lensGeo, lensOff);
+    lens.rotation.y = Math.PI;
+    lens.position.set(0, y, -0.61);
     head.add(lens);
     lenses.push({ mesh: lens, color });
   });
