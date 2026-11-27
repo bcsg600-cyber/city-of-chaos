@@ -33,7 +33,8 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xbfdcf0, 260, 1050);
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2200);
+// Wider third-person view so more of the road and city stay visible.
+const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 2200);
 
 // ---------- Sky ----------
 const DAY_TOP = new THREE.Color(0x3f7cc4);
