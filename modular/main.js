@@ -135,31 +135,51 @@ const LOT = BLOCK - ROAD;
 const ROADS = [];
 for (let k = -13.5; k <= 13.5; k++) ROADS.push(k * BLOCK);
 
-// Borough silhouettes in world coordinates: Manhattan, Bronx, Queens,
-// Brooklyn and Staten Island. Each is an ellipse, with narrow waterways
-// separating the land masses so the whole playable map reads as NYC.
+// Approximate NYC borough footprints (normalized outlines, not oval islands).
+// World layout: Manhattan center, Bronx north, Queens east, Brooklyn south-east,
+// Staten Island south-west. Each outline is intentionally irregular.
 const boroughs = [
-  { name: 'Manhattan', x: -78, z: 45, rx: 52, rz: 292, rot: -0.10 },
-  { name: 'Bronx', x: -55, z: 330, rx: 118, rz: 76, rot: 0.12 },
-  { name: 'Queens', x: 172, z: 132, rx: 178, rz: 132, rot: -0.12 },
-  { name: 'Brooklyn', x: 116, z: -148, rx: 194, rz: 116, rot: 0.10 },
-  { name: 'Staten Island', x: -238, z: -302, rx: 106, rz: 68, rot: -0.18 }
+  { name: 'Manhattan', x: -78, z: 45, rx: 52, rz: 292, rot: -0.10, outline: [[-.46,-1],[-.18,-.98],[.05,-.91],[.24,-.78],[.35,-.58],[.43,-.32],[.48,-.05],[.42,.22],[.34,.49],[.18,.72],[-.02,.88],[-.22,.96],[-.43,.92],[-.52,.72],[-.48,.48],[-.40,.18],[-.36,-.12],[-.39,-.43],[-.48,-.72]] },
+  { name: 'Bronx', x: -55, z: 330, rx: 118, rz: 76, rot: 0.12, outline: [[-.92,-.30],[-.72,-.72],[-.28,-.95],[.18,-.88],[.62,-.62],[.94,-.22],[.86,.32],[.55,.72],[.12,.94],[-.34,.82],[-.72,.55],[-.96,.12]] },
+  { name: 'Queens', x: 172, z: 132, rx: 178, rz: 132, rot: -0.12, outline: [[-.96,-.10],[-.82,-.55],[-.54,-.84],[-.12,-.94],[.24,-.80],[.52,-.62],[.88,-.48],[.98,-.12],[.84,.22],[.62,.42],[.48,.76],[.12,.94],[-.30,.86],[-.62,.62],[-.88,.34]] },
+  { name: 'Brooklyn', x: 116, z: -148, rx: 194, rz: 116, rot: 0.10, outline: [[-.98,-.34],[-.76,-.72],[-.42,-.90],[-.04,-.82],[.24,-.64],[.52,-.72],[.82,-.50],[.98,-.18],[.88,.22],[.62,.46],[.36,.66],[.02,.84],[-.34,.80],[-.62,.56],[-.90,.26]] },
+  { name: 'Staten Island', x: -238, z: -302, rx: 106, rz: 68, rot: -0.18, outline: [[-.92,-.22],[-.70,-.68],[-.28,-.94],[.18,-.86],[.64,-.58],[.92,-.16],[.82,.34],[.48,.76],[.02,.94],[-.42,.78],[-.78,.42]] }
 ];
+function boroughLocal(b, x, z) {
+  const dx = x - b.x, dz = z - b.z;
+  const cs = Math.cos(b.rot), sn = Math.sin(b.rot);
+  return { x: (dx * cs - dz * sn) / b.rx, z: (dx * sn + dz * cs) / b.rz };
+}
+function pointInOutline(point, outline) {
+  let inside = false;
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+    const a = outline[i], b = outline[j];
+    if (((a[1] > point.z) !== (b[1] > point.z)) &&
+        (point.x < (b[0] - a[0]) * (point.z - a[1]) / ((b[1] - a[1]) || 1e-9) + a[0])) inside = !inside;
+  }
+  return inside;
+}
 function isCityLand(x, z, margin = 0) {
   return boroughs.some(b => {
-    const dx = x - b.x, dz = z - b.z;
-    const cs = Math.cos(b.rot), sn = Math.sin(b.rot);
-    const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;
-    const rx = Math.max(1, b.rx - margin), rz = Math.max(1, b.rz - margin);
-    return (lx * lx) / (rx * rx) + (lz * lz) / (rz * rz) <= 1;
+    const p = boroughLocal(b, x, z);
+    const shrinkX = b.rx / Math.max(1, b.rx - margin);
+    const shrinkZ = b.rz / Math.max(1, b.rz - margin);
+    return pointInOutline({ x: p.x * shrinkX, z: p.z * shrinkZ }, b.outline);
   });
 }
 const landMat = mat(0x777b80, 0.95);
 for (const b of boroughs) {
-  const land = new THREE.Mesh(new THREE.CircleGeometry(1, 64), landMat);
+  const shape = new THREE.Shape();
+  b.outline.forEach(([px, pz], i) => {
+    const lx = px * b.rx, lz = pz * b.rz;
+    const cs = Math.cos(b.rot), sn = Math.sin(b.rot);
+    const x = lx * cs + lz * sn;
+    const z = -lx * sn + lz * cs;
+    if (i === 0) shape.moveTo(x, -z); else shape.lineTo(x, -z);
+  });
+  shape.closePath();
+  const land = new THREE.Mesh(new THREE.ShapeGeometry(shape), landMat);
   land.rotation.x = -Math.PI / 2;
-  land.rotation.z = b.rot;
-  land.scale.set(b.rx, b.rz, 1);
   land.position.set(b.x, -0.02, b.z);
   scene.add(land);
 }
@@ -2168,8 +2188,7 @@ function updateOnFoot(dt) {
   if (!dynBlocked(nx, pos.z, RADIUS)) pos.x = nx;
   const nz = pos.z + move.z * speed * dt;
   if (!dynBlocked(pos.x, nz, RADIUS)) pos.z = nz;
-  pos.x = clamp(pos.x, -590, 590);
-  pos.z = clamp(pos.z, -590, 590);
+  // No invisible rectangular world-edge wall: the player can roam freely.
 
   // Knockback from being hit by a car
   if (knockX || knockZ) {
