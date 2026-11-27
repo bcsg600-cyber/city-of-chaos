@@ -336,30 +336,53 @@ function addSignalHead(parent, x, y, z, rotationY, axis) {
   const head = new THREE.Group();
   head.position.set(x, y, z);
   head.rotation.y = rotationY;
-  // Larger NYC-style yellow signal housing with a black recessed face.
-  const housing = new THREE.Mesh(new THREE.BoxGeometry(0.94, 2.55, 0.72), tlMetal);
-  head.add(housing);
-  const face = new THREE.Mesh(
-    new THREE.BoxGeometry(0.68, 2.28, 0.10),
-    tlBlack
+
+  // Oversized, unmistakable NYC yellow signal head.
+  const housing = new THREE.Mesh(
+    new THREE.BoxGeometry(1.12, 2.95, 0.82),
+    new THREE.MeshStandardMaterial({ color: 0xffc400, metalness: 0.25, roughness: 0.48 })
   );
-  face.position.set(0, 0, -0.405);
-  head.add(face);
-  const visorGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.22, 18);
-  visorGeo.rotateX(Math.PI / 2);
-  const lensGeo = new THREE.CircleGeometry(0.205, 24);
+  head.add(housing);
+
+  const blackFace = new THREE.Mesh(
+    new THREE.BoxGeometry(0.82, 2.68, 0.12),
+    new THREE.MeshStandardMaterial({ color: 0x090b0d, roughness: 0.85 })
+  );
+  blackFace.position.set(0, 0, -0.47);
+  head.add(blackFace);
+
   const lenses = [];
-  ['red','amber','green'].forEach((color, i) => {
-    const y = 0.72 - i * 0.72;
-    const visor = new THREE.Mesh(visorGeo, tlBlack);
-    visor.position.set(0, y, -0.49);
-    head.add(visor);
-    const lens = new THREE.Mesh(lensGeo, lensOff);
-    lens.rotation.y = Math.PI;
-    lens.position.set(0, y, -0.61);
+  const lensColors = {
+    red: 0xff2020,
+    amber: 0xffb000,
+    green: 0x19e64b
+  };
+  ['red', 'amber', 'green'].forEach((color, i) => {
+    const yPos = 0.82 - i * 0.82;
+    // Deep black sun hood above each lens.
+    const hood = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.29, 0.29, 0.25, 20),
+      new THREE.MeshStandardMaterial({ color: 0x101214, roughness: 0.9 })
+    );
+    hood.rotation.x = Math.PI / 2;
+    hood.position.set(0, yPos + 0.08, -0.57);
+    head.add(hood);
+
+    // Spherical lens stays visible from different camera angles.
+    const lensMaterial = new THREE.MeshStandardMaterial({
+      color: 0x17191b,
+      emissive: lensColors[color],
+      emissiveIntensity: 0,
+      roughness: 0.22,
+      metalness: 0.05
+    });
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.235, 20, 16), lensMaterial);
+    lens.scale.z = 0.38;
+    lens.position.set(0, yPos, -0.67);
     head.add(lens);
-    lenses.push({ mesh: lens, color });
+    lenses.push({ mesh: lens, color, material: lensMaterial });
   });
+
   parent.add(head);
   trafficLights.push({ axis, lenses });
 }
