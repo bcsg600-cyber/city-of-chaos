@@ -313,54 +313,106 @@ for (let gx = -13; gx <= 13; gx++) {
   }
 }
 
-// ---------- Street lamps and traffic lights ----------
-const poleGeo = new THREE.CylinderGeometry(0.12, 0.15, 6, 6);
+// ---------- NYC street lamps and traffic signals ----------
+const poleGeo = new THREE.CylinderGeometry(0.12, 0.15, 6, 8);
 poleGeo.translate(0, 3, 0);
 const headGeo = new THREE.SphereGeometry(0.45, 10, 8);
 headGeo.translate(0, 6.2, 0);
 const poleMat = mat(0x2a2d33, 0.6);
 const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff1c1, emissive: 0xffc860, emissiveIntensity: 0 });
-
-const tlPoleGeo = new THREE.CylinderGeometry(0.1, 0.12, 5, 6);
-tlPoleGeo.translate(0, 2.5, 0);
-const tlBoxGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-const redLight = new THREE.MeshStandardMaterial({ color: 0x881111, emissive: 0xff2020, emissiveIntensity: 1.2 });
-const greenLight = new THREE.MeshStandardMaterial({ color: 0x114411, emissive: 0x20ff40, emissiveIntensity: 1.2 });
+const tlMetal = new THREE.MeshStandardMaterial({ color: 0xe0a51b, metalness: 0.48, roughness: 0.42 });
+const tlBlack = new THREE.MeshStandardMaterial({ color: 0x17191b, roughness: 0.8 });
+const lensOff = new THREE.MeshStandardMaterial({ color: 0x25292b, roughness: 0.3 });
+const lensMats = {
+  red: new THREE.MeshStandardMaterial({ color: 0xff2525, emissive: 0xff0800, emissiveIntensity: 2.2 }),
+  amber: new THREE.MeshStandardMaterial({ color: 0xffb51b, emissive: 0xff8a00, emissiveIntensity: 1.8 }),
+  green: new THREE.MeshStandardMaterial({ color: 0x26e65b, emissive: 0x00ff38, emissiveIntensity: 2.2 })
+};
 const trafficLights = [];
 const destructibleStreetLamps = [];
 const fallenStreetLamps = [];
+
+function addSignalHead(parent, x, y, z, rotationY, axis) {
+  const head = new THREE.Group();
+  head.position.set(x, y, z);
+  head.rotation.y = rotationY;
+  const housing = new THREE.Mesh(new THREE.BoxGeometry(0.82, 2.25, 0.62), tlMetal);
+  head.add(housing);
+  const visorGeo = new THREE.CylinderGeometry(0.23, 0.23, 0.18, 16);
+  visorGeo.rotateX(Math.PI / 2);
+  const lenses = [];
+  ['red','amber','green'].forEach((color, i) => {
+    const visor = new THREE.Mesh(visorGeo, tlBlack);
+    visor.position.set(0, 0.68 - i * 0.68, -0.38);
+    head.add(visor);
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.19, 16, 12), lensOff);
+    lens.position.set(0, 0.68 - i * 0.68, -0.49);
+    head.add(lens);
+    lenses.push({ mesh: lens, color });
+  });
+  parent.add(head);
+  trafficLights.push({ axis, lenses });
+}
+function addPedSignal(parent, x, y, z, rotationY) {
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  g.rotation.y = rotationY;
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.86, 0.42), tlMetal);
+  g.add(box);
+  const screen = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.62, 0.08), tlBlack);
+  screen.position.z = -0.25;
+  g.add(screen);
+  const walk = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, 0.06), lensMats.green);
+  walk.position.set(-0.1, 0.06, -0.31);
+  const hand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.06), lensMats.red);
+  hand.position.set(0.12, 0.06, -0.31);
+  g.add(walk, hand);
+  parent.add(g);
+}
 
 for (const rx of ROADS) {
   for (const rz of ROADS) {
     if (!isCityLand(rx, rz, -2)) continue;
     const lamp = new THREE.Group();
-    const lampPoleMat = poleMat.clone();
-    const lampHeadMat = lampMat.clone();
-    lampPoleMat.transparent = true;
-    lampHeadMat.transparent = true;
-    const lampPole = new THREE.Mesh(poleGeo, lampPoleMat);
-    const lampHead = new THREE.Mesh(headGeo, lampHeadMat);
-    lamp.add(lampPole, lampHead);
-    const lampX = rx + 6.8;
-    const lampZ = rz + 6.8;
+    const lampPoleMat = poleMat.clone(), lampHeadMat = lampMat.clone();
+    lampPoleMat.transparent = true; lampHeadMat.transparent = true;
+    lamp.add(new THREE.Mesh(poleGeo, lampPoleMat), new THREE.Mesh(headGeo, lampHeadMat));
+    const lampX = rx + 6.8, lampZ = rz + 6.8;
     lamp.position.set(lampX, 0, lampZ);
     scene.add(lamp);
     const lampCollider = { minX: lampX - 0.25, maxX: lampX + 0.25, minZ: lampZ - 0.25, maxZ: lampZ + 0.25 };
     colliders.push(lampCollider);
     destructibleStreetLamps.push({ group: lamp, collider: lampCollider, x: lampX, z: lampZ, falling: false });
 
-    const tx = rx - 6.8;
-    const tz = rz - 6.8;
-    const pole = new THREE.Mesh(tlPoleGeo, poleMat);
-    pole.position.set(tx, 0, tz);
-    scene.add(pole);
-    colliders.push({ minX: tx - 0.25, maxX: tx + 0.25, minZ: tz - 0.25, maxZ: tz + 0.25 });
-    const nsBox = new THREE.Mesh(tlBoxGeo, redLight);
-    nsBox.position.set(tx - 0.35, 4.8, tz);
-    const ewBox = new THREE.Mesh(tlBoxGeo, redLight);
-    ewBox.position.set(tx + 0.35, 4.8, tz);
-    scene.add(nsBox, ewBox);
-    trafficLights.push({ mesh: nsBox, axis: 'ns' }, { mesh: ewBox, axis: 'ew' });
+    // NYC-style corner signal pole, mast arm, yellow three-lens heads and walk signals.
+    const tx = rx - 6.8, tz = rz - 6.8;
+    const assembly = new THREE.Group();
+    assembly.position.set(tx, 0, tz);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 6.2, 10), tlMetal);
+    post.position.set(0, 3.1, 0);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 5.6, 8), tlMetal);
+    arm.rotation.z = Math.PI / 2;
+    arm.position.set(2.25, 5.65, 0);
+    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.16), tlMetal);
+    bracket.position.set(0, 5.35, 0);
+    assembly.add(post, arm, bracket);
+    addSignalHead(assembly, 4.65, 5.35, 0, Math.PI, 'ns');
+    addSignalHead(assembly, 0.55, 5.35, 0.72, Math.PI / 2, 'ew');
+    addPedSignal(assembly, 1.1, 3.9, -0.58, Math.PI);
+    // Small green-and-white street-name blade and one-way arrow sign.
+    const streetBlade = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.42, 0.09), new THREE.MeshStandardMaterial({ color: 0x087f79, roughness: 0.55 }));
+    streetBlade.position.set(1.25, 6.35, -0.05);
+    const streetText = new THREE.Mesh(new THREE.PlaneGeometry(2.05, 0.28), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    streetText.position.set(1.25, 6.35, -0.105);
+    assembly.add(streetBlade, streetText);
+    const oneWay = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.38, 0.08), new THREE.MeshStandardMaterial({ color: 0xf1f0df, roughness: 0.7 }));
+    oneWay.position.set(1.2, 6.85, -0.04);
+    const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.28, 3), tlBlack);
+    arrow.rotation.z = -Math.PI / 2;
+    arrow.position.set(1.78, 6.85, -0.1);
+    assembly.add(oneWay, arrow);
+    scene.add(assembly);
+    colliders.push({ minX: tx - 0.22, maxX: tx + 0.22, minZ: tz - 0.22, maxZ: tz + 0.22 });
   }
 }
 
@@ -2400,7 +2452,11 @@ function updateEnvironment(dt) {
   cloudMat.color.setScalar(0.35 + 0.65 * daylight);
   const nsGreen = (elapsed % 12) < 5.5;
   for (const t of trafficLights) {
-    t.mesh.material = (t.axis === 'ns' ? nsGreen : !nsGreen) ? greenLight : redLight;
+    const go = (t.axis === 'ns' ? nsGreen : !nsGreen);
+    for (const lens of t.lenses) {
+      const active = (go && lens.color === 'green') || (!go && lens.color === 'red');
+      lens.mesh.material = active ? lensMats[lens.color] : lensOff;
+    }
   }
 
   for (const c of clouds) {
