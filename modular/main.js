@@ -1313,10 +1313,15 @@ function playPlayerAnimation(kind) {
   }
   const action = playerAnimationActions[key];
   if (!action) {
-    // Do not substitute a different movement or body pose when an asset is absent.
+    // Missing FBX clips must not leave the imported character frozen.
+    // Show the built-in rig, which already has procedural walk / jump / punch poses.
     stopImportedAnimation();
+    if (playerModel) playerModel.visible = false;
+    player.group.visible = true;
     return;
   }
+  player.group.visible = false;
+  if (playerModel) playerModel.visible = true;
   const oneShot = ['jump', 'jumpAlt', 'punch', 'enter', 'exit'].includes(key);
   action.setEffectiveTimeScale(1);
   action.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity);
@@ -1375,14 +1380,13 @@ function loadPlayerAnimation(url, key) {
 });
 }
 const pendingPlayerClips = {};
-loadPlayerAnimation('../indian-man-in-suit_Breathing_Idle.fbx', 'idle');
-loadPlayerAnimation('../indian-man-in-suit_Walking.fbx', 'walk');
-loadPlayerAnimation('../indian-man-in-suit_Running.fbx', 'run');
-loadPlayerAnimation('../indian-man-in-suit_Standing_Jump_3.fbx', 'jump');
-loadPlayerAnimation('../indian-man-in-suit_Punching.fbx', 'punch');
-loadPlayerAnimation('../indian-man-in-suit_Entering_Car.fbx', 'enter');
-loadPlayerAnimation('../indian-man-in-suit_Exiting_Car.fbx', 'exit');
-loadPlayerAnimation('../indian-man-in-suit_Driving.fbx', 'sit');
+// These FBX files are not included in the repository. Do not request eight
+// guaranteed-404 URLs on every launch; the procedural rig is the working fallback.
+// Players can still add compatible FBX clips with the Load animations picker.
+for (const key of ['idle', 'walk', 'run', 'jump', 'punch', 'enter', 'exit', 'sit']) {
+  animStatus[key] = 'optional FBX not bundled — procedural fallback';
+}
+
 
 // On-screen diagnostics: what loaded, and how many animation tracks matched the model
 const animStatus = {};
@@ -1398,9 +1402,15 @@ function updateDebug() {
 }
 function bindClip(key, clip) {
   const rc = retargetClip(clip);
+  if (!rc.userData.matched) {
+    animStatus[key] = 'no compatible bones — procedural fallback';
+    updateDebug();
+    return;
+  }
   playerAnimationActions[key] = playerModelMixer.clipAction(rc);
   animStatus[key] = rc.userData.matched + '/' + rc.userData.total + ' tracks matched';
   updateDebug();
+  if (desiredPlayerAnimation === key) playPlayerAnimation(key);
 }
 
 // Register an animation from an FBX that was chosen by hand (works even when the page is opened from disk)
