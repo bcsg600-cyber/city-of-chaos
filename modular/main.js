@@ -1380,16 +1380,11 @@ function loadPlayerAnimation(url, key) {
 });
 }
 const pendingPlayerClips = {};
-// These FBX files are not included in the repository. Do not request eight
-// guaranteed-404 URLs on every launch; the procedural rig is the working fallback.
-// Players can still add compatible FBX clips with the Load animations picker.
-for (const key of ['idle', 'walk', 'run', 'jump', 'punch', 'enter', 'exit', 'sit']) {
-  animStatus[key] = 'optional FBX not bundled — procedural fallback';
-}
+// FBX clips are optional; compatible clips can be added with the Load animations picker.
 
 
 // On-screen diagnostics: what loaded, and how many animation tracks matched the model
-const animStatus = {};
+const animStatus = Object.fromEntries(['idle', 'walk', 'run', 'jump', 'punch', 'enter', 'exit', 'sit'].map(key => [key, 'optional FBX not bundled — procedural fallback']));
 let modelStat = 'not loaded';
 function updateDebug() {
   const el = document.getElementById('dbg');
