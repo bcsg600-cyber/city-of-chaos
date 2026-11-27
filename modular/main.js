@@ -2631,51 +2631,109 @@ function drawCityMap() {
   if (!mapCtx) return;
   const c = mapCtx, w = mapCanvas.width, h = mapCanvas.height;
   c.clearRect(0, 0, w, h);
-  c.fillStyle = '#145477'; c.fillRect(0, 0, w, h);
-  // Draw the five borough land masses and their waterways on the map.
-  c.fillStyle = '#858b8e';
+
+  // Match the reference map: pale turquoise harbor, gray surrounding land,
+  // distinct borough colors, dark shoreline outlines and readable labels.
+  c.fillStyle = '#9bcfca';
+  c.fillRect(0, 0, w, h);
+
+  // Nearby mainland beyond the five boroughs.
+  c.fillStyle = '#c5c5c5';
+  c.beginPath();
+  c.moveTo(0, 0); c.lineTo(w * 0.57, 0); c.lineTo(w * 0.54, h * 0.10);
+  c.lineTo(w * 0.49, h * 0.23); c.lineTo(w * 0.43, h * 0.37);
+  c.lineTo(w * 0.36, h * 0.51); c.lineTo(w * 0.31, h * 0.66);
+  c.lineTo(w * 0.23, h * 0.82); c.lineTo(0, h * 0.91); c.closePath(); c.fill();
+
+  const boroughColors = {
+    'Manhattan': '#b86ab5',
+    'Bronx': '#aaa968',
+    'Queens': '#459847',
+    'Brooklyn': '#68b6b5',
+    'Staten Island': '#c98261'
+  };
+  const labelPositions = {
+    'Manhattan': { x: -78, z: 42, angle: -1.05, size: 22 },
+    'Bronx': { x: -55, z: 330, angle: 0, size: 21 },
+    'Queens': { x: 172, z: 132, angle: 0, size: 21 },
+    'Brooklyn': { x: 116, z: -148, angle: 0, size: 21 },
+    'Staten Island': { x: -238, z: -302, angle: 0, size: 18 }
+  };
+
+  // Render the exact same irregular polygon used by the 3D shoreline.
   for (const b of boroughs) {
     c.beginPath();
-    c.ellipse(worldToMapX(b.x), worldToMapY(b.z), b.rx * mapZoom * w / 1200, b.rz * mapZoom * h / 1200, -b.rot, 0, Math.PI * 2);
+    b.outline.forEach(([px, pz], i) => {
+      const lx = px * b.rx, lz = pz * b.rz;
+      const cs = Math.cos(b.rot), sn = Math.sin(b.rot);
+      const wx = b.x + lx * cs + lz * sn;
+      const wz = b.z - lx * sn + lz * cs;
+      const mx = worldToMapX(wx), my = worldToMapY(wz);
+      if (i === 0) c.moveTo(mx, my); else c.lineTo(mx, my);
+    });
+    c.closePath();
+    c.fillStyle = boroughColors[b.name] || '#858b8e';
     c.fill();
+    c.strokeStyle = '#243b3d';
+    c.lineWidth = 2.2;
+    c.stroke();
   }
-  // City blocks and building footprints.
-  for (const b of mapBuildings) {
-    const x = worldToMapX(b.x - b.w/2), y = worldToMapY(b.z + b.d/2);
-    c.fillStyle = '#64748b';
-    c.fillRect(x, y, b.w*mapZoom/1200*w, b.d*mapZoom/1200*h);
-  }
-  // Roads stop at shorelines instead of continuing through the harbor.
-  c.strokeStyle = '#c5cbd1'; c.lineWidth = ROAD/900*w;
+
+  // Small street grid, clipped to the actual borough coastlines.
+  c.save();
+  c.strokeStyle = 'rgba(238,244,235,.82)';
+  c.lineWidth = 1.15;
   for (const r of ROADS) {
-    for (let p = -220; p < 220; p += 8) {
+    for (let p = -420; p < 440; p += 5) {
       if (isCityLand(r, p, -1)) {
-        c.beginPath(); c.moveTo(worldToMapX(r), worldToMapY(p)); c.lineTo(worldToMapX(r), worldToMapY(p + 8)); c.stroke();
+        c.beginPath(); c.moveTo(worldToMapX(r), worldToMapY(p)); c.lineTo(worldToMapX(r), worldToMapY(p + 5)); c.stroke();
       }
       if (isCityLand(p, r, -1)) {
-        c.beginPath(); c.moveTo(worldToMapX(p), worldToMapY(r)); c.lineTo(worldToMapX(p + 8), worldToMapY(r)); c.stroke();
+        c.beginPath(); c.moveTo(worldToMapX(p), worldToMapY(r)); c.lineTo(worldToMapX(p + 5), worldToMapY(r)); c.stroke();
       }
     }
   }
-  c.strokeStyle = 'rgba(255,255,255,.28)'; c.lineWidth = 1;
-  c.strokeRect(1, 1, w-2, h-2);
-  // Mission locations.
+  c.restore();
+
+  // Borough names, placed over their respective land masses.
+  for (const [name, p] of Object.entries(labelPositions)) {
+    c.save();
+    c.translate(worldToMapX(p.x), worldToMapY(p.z));
+    c.rotate(p.angle);
+    c.fillStyle = '#101719';
+    c.font = 'bold ' + p.size + 'px Arial, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(name, 0, 0);
+    c.restore();
+  }
+
+  // Map title and a simple north marker, inspired by the supplied NYC map.
+  c.fillStyle = 'rgba(255,255,255,.92)';
+  c.fillRect(14, 12, 250, 42);
+  c.strokeStyle = '#21495c'; c.lineWidth = 3; c.strokeRect(14, 12, 250, 42);
+  c.fillStyle = '#21495c'; c.font = 'bold 27px Arial, sans-serif';
+  c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText('NEW YORK CITY', 24, 34);
+  c.fillStyle = '#285b73';
+  c.beginPath(); c.moveTo(34, 72); c.lineTo(44, 96); c.lineTo(34, 120); c.lineTo(24, 96); c.closePath(); c.fill();
+  c.strokeStyle = '#183c50'; c.lineWidth = 1.5; c.stroke();
+
+  // Missions, parked cars, and player marker remain visible above the map art.
   if (mission.pickup) {
-    c.fillStyle = '#facc15'; c.beginPath(); c.arc(worldToMapX(mission.pickup.x), worldToMapY(mission.pickup.z), 7, 0, Math.PI*2); c.fill();
+    c.fillStyle = '#facc15'; c.beginPath(); c.arc(worldToMapX(mission.pickup.x), worldToMapY(mission.pickup.z), 6, 0, Math.PI*2); c.fill();
   }
   if (mission.drop) {
-    c.fillStyle = '#4ade80'; c.beginPath(); c.arc(worldToMapX(mission.drop.x), worldToMapY(mission.drop.z), 7, 0, Math.PI*2); c.fill();
+    c.fillStyle = '#22c55e'; c.beginPath(); c.arc(worldToMapX(mission.drop.x), worldToMapY(mission.drop.z), 6, 0, Math.PI*2); c.fill();
   }
-  // Parked and traffic vehicles as small neutral marks.
-  c.fillStyle = 'rgba(255,255,255,.55)';
-  for (const rec of parkedRecs) {
-    c.fillRect(worldToMapX(rec.x)-1.5, worldToMapY(rec.z)-1.5, 3, 3);
-  }
-  // Your active vehicle and player position.
+  c.fillStyle = 'rgba(255,255,255,.8)';
+  for (const rec of parkedRecs) c.fillRect(worldToMapX(rec.x)-1.5, worldToMapY(rec.z)-1.5, 3, 3);
   c.fillStyle = '#facc15';
   c.beginPath(); c.arc(worldToMapX(car.x), worldToMapY(car.z), 5, 0, Math.PI*2); c.fill();
-  c.fillStyle = '#38bdf8';
+  c.fillStyle = '#0b70d1';
   c.beginPath(); c.arc(worldToMapX(pos.x), worldToMapY(pos.z), 5, 0, Math.PI*2); c.fill();
+
+  c.strokeStyle = '#263f43'; c.lineWidth = 2;
+  c.strokeRect(1, 1, w-2, h-2);
 }
 function setMapOpen(open) {
   mapOpen = open;
