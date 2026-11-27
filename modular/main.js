@@ -685,35 +685,43 @@ function registerParked(pc, x, z, h) {
   parkedRecs.push(rec);
 }
 
-// Parked cars (solid)
+// Parked cars are only created on actual borough land, never in the harbor.
 for (const r of ROADS) {
   for (let k = -4; k <= 4; k++) {
     if (Math.random() < 0.3) {
       const x = r + pick([-4.3, 4.3]);
       const z = k * BLOCK + rand(-10, 10);
-      const pc = buildCar();
-      pc.group.position.set(x, 0, z);
-      registerParked(pc, x, z, 0);
+      if (isCityLand(x, z, -3)) {
+        const pc = buildCar();
+        pc.group.position.set(x, 0, z);
+        registerParked(pc, x, z, 0);
+      }
     }
     if (Math.random() < 0.3) {
       const z = r + pick([-4.3, 4.3]);
       const x = k * BLOCK + rand(-10, 10);
-      const pc = buildCar();
-      pc.group.position.set(x, 0, z);
-      pc.group.rotation.y = Math.PI / 2;
-      registerParked(pc, x, z, Math.PI / 2);
+      if (isCityLand(x, z, -3)) {
+        const pc = buildCar();
+        pc.group.position.set(x, 0, z);
+        pc.group.rotation.y = Math.PI / 2;
+        registerParked(pc, x, z, Math.PI / 2);
+      }
     }
   }
 }
 
-// Ambient traffic (visual only for now)
+// Ambient traffic follows road segments and turns around at borough shorelines.
 const traffic = [];
 for (const r of ROADS) {
   for (const axis of ['z', 'x']) {
+    const p = rand(-180, 180);
+    const x = axis === 'z' ? r + 2 : p;
+    const z = axis === 'z' ? p : r + 2;
+    if (!isCityLand(x, z, -2)) continue;
     const car = buildCar();
     traffic.push({
       group: car.group, wheels: car.wheels, axis,
-      lane: r + 2, p: rand(-180, 180),
+      lane: r + 2, p,
       dir: Math.random() < 0.5 ? 1 : -1, speed: rand(10, 16)
     });
   }
@@ -1513,31 +1521,33 @@ const skinTones = [0xf1c9a5, 0xc68642, 0x8d5524, 0xe0ac69, 0xf5d0b0];
 const hairTones = [0x2b1d12, 0x6b4423, 0x111111, 0xb8860b, 0x4a4a4a];
 const topTones = [0xef4444, 0x22c55e, 0xeab308, 0xf97316, 0xec4899, 0x14b8a6, 0xf5f5f5, 0x1f2937];
 const bottomTones = [0x1f2937, 0x475569, 0x78350f, 0x1e3a8a];
+// Every pedestrian is now spawned by spawnWalker(), which checks land and collision.
 const walkers = [];
-for (let i = 0; i < 10; i++) {
-  const rig = buildHuman({
-    skin: pick(skinTones), hair: pick(hairTones), top: pick(topTones),
-    bottom: pick(bottomTones), shoes: pick([0x111111, 0x7c2d12, 0xe5e7eb])
-  });
-  scene.add(rig.group);
-  const spd1 = rand(1.3, 2.2);
-  walkers.push({ rig, x: rand(-370, 370), z: 178 + rand(-1.5, 1.5), dir: Math.random() < 0.5 ? 1 : -1, speed: spd1, baseSpeed: spd1, walkT: Math.random() * 10 });
-}
 
-// ---------- Sidewalks along every road ----------
-const sidewalkGeo = new THREE.PlaneGeometry(3, 800).rotateX(-Math.PI / 2);
+// ---------- Sidewalks clipped to borough land ----------
+const sidewalkGeo = new THREE.PlaneGeometry(3, BLOCK - ROAD).rotateX(-Math.PI / 2);
 const sidewalkMat = mat(0xb8b4aa, 0.9);
 for (const r of ROADS) {
-  for (const side of [-1, 1]) {
-    const sv = new THREE.Mesh(sidewalkGeo, sidewalkMat);
-    sv.position.set(r + side * 7.5, 0.06, 0);
-    sv.receiveShadow = true;
-    scene.add(sv);
-    const sh = new THREE.Mesh(sidewalkGeo, sidewalkMat);
-    sh.position.set(0, 0.06, r + side * 7.5);
-    sh.rotation.y = Math.PI / 2;
-    sh.receiveShadow = true;
-    scene.add(sh);
+  for (let p = -620; p < 620; p += BLOCK) {
+    for (const side of [-1, 1]) {
+      const x = r + side * 7.5;
+      const z = p + BLOCK / 2;
+      if (isCityLand(x, z, -2)) {
+        const sv = new THREE.Mesh(sidewalkGeo, sidewalkMat);
+        sv.position.set(x, 0.06, z);
+        sv.receiveShadow = true;
+        scene.add(sv);
+      }
+      const hx = p + BLOCK / 2;
+      const hz = r + side * 7.5;
+      if (isCityLand(hx, hz, -2)) {
+        const sh = new THREE.Mesh(sidewalkGeo, sidewalkMat);
+        sh.position.set(hx, 0.06, hz);
+        sh.rotation.y = Math.PI / 2;
+        sh.receiveShadow = true;
+        scene.add(sh);
+      }
+    }
   }
 }
 
@@ -1848,6 +1858,8 @@ useBtn.addEventListener('click', toggleCar);
 // ---------- Collision ----------
 const RADIUS = 0.4;
 function blocked(x, z, r = RADIUS) {
+  // Treat the shoreline as the world edge instead of using a hidden rectangle.
+  if (!isCityLand(x, z, -2)) return true;
   for (const c of colliders) {
     if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) return true;
   }
@@ -2420,8 +2432,7 @@ function updateCar(dt) {
     }
     car.speed = -car.speed * 0.3;
   }
-  car.x = clamp(car.x, -388, 388);
-  car.z = clamp(car.z, -388, 185);
+  // The borough shoreline now defines the driving boundary; no hidden rectangular clamp.
 
   // Wheel rotation is intentionally disabled until the GLB wheel pivots are verified.
   car.shake = Math.max(0, car.shake - dt);
@@ -2518,9 +2529,14 @@ function updateEnvironment(dt) {
 // ---------- Update: traffic, pedestrians, gulls ----------
 function updateTraffic(dt) {
   for (const t of traffic) {
-    t.p += t.dir * t.speed * dt;
-    if (t.p > 190) { t.p = 190; t.dir = -1; }
-    if (t.p < -190) { t.p = -190; t.dir = 1; }
+    const nextP = t.p + t.dir * t.speed * dt;
+    const nx = t.axis === 'z' ? t.lane : nextP;
+    const nz = t.axis === 'z' ? nextP : t.lane;
+    if (Math.abs(nextP) > 430 || !isCityLand(nx, nz, -2)) {
+      t.dir *= -1;
+    } else {
+      t.p = nextP;
+    }
     if (t.axis === 'z') {
       t.group.position.set(t.lane, 0, t.p);
       t.group.rotation.y = t.dir > 0 ? 0 : Math.PI;
