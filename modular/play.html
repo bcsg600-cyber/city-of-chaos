@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>City of Chaos — loading</title>
+</head>
+<body>
+  <p id="loadStatus" role="status">Loading City of Chaos…</p>
+  <script type="module">
+    const status = document.getElementById('loadStatus');
+    try {
+      const response = await fetch('./index.html');
+      if (!response.ok) throw new Error(`Could not load the game page (${response.status}).`);
+      let html = await response.text();
+      const gameScript = /<script type="module" src="\.\/main\.js(?:\?[^\"]*)?"><\/script>/;
+      if (!gameScript.test(html)) throw new Error('The game entry script was not found.');
+      html = html.replace(gameScript, '<script type="module" src="./fit-main.js"><\/script>');
+      document.open();
+      document.write(html);
+      document.close();
+    } catch (error) {
+      status.textContent = `Unable to start the game: ${error.message} Make sure the game is served over HTTP or HTTPS.`;
+    }
+  </script>
+</body>
+</html>
