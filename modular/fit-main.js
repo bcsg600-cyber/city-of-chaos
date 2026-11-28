@@ -28,6 +28,6 @@ THREE.Object3D.prototype.add = function (...objects) {
   return originalAdd.apply(this, objects);
 };
 
-// The game module sets up its procedural idle, walk, run, jump, punch, and
-// seated poses when no optional animation clips have been uploaded.
+// Start the game, then add a dedicated Manhattan street-map panel to its HUD.
 await import('./main.js?v=fov1');
+await import('./manhattan-map.js');
